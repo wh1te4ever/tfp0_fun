@@ -3,8 +3,14 @@
 #include <mach/mach.h>
 #include <unistd.h>
 #include <inttypes.h>
+#include <errno.h>
+#include <stdlib.h> 
 
-static task_t tfp0 = MACH_PORT_NULL;
+#include "main.h"
+#include "krw.h"
+
+task_t tfp0 = MACH_PORT_NULL;
+static uint64_t kbase = 0;
 
 static kern_return_t
 init_tfp0(void) {
@@ -32,6 +38,12 @@ init_tfp0(void) {
 int main(int argc, char *argv[], char *envp[]) {
 	if(init_tfp0() == KERN_SUCCESS) {
 		printf("tfp0: 0x%" PRIx32 "\n", tfp0);
+
+    	int r = get_kbase(&kbase);
+    	printf("get_kbase ret: %d, kbase: 0x%llx\n", r, kbase);
+
+		khexdump(kbase, 256);
+
 		mach_port_deallocate(mach_task_self(), tfp0);
 	}
 }
