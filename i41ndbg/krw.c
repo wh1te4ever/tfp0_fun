@@ -6,6 +6,8 @@
 #include <stdio.h>
 
 extern task_t tfp0;
+uint64_t kbase = 0;
+uint64_t kslide = 0;
 
 #ifndef MIN
 #    define MIN(a, b) ((a) < (b) ? (a) : (b))
@@ -30,6 +32,7 @@ int get_kbase(uint64_t *addr)
     {
         return ENOTSUP;
     }
+    kslide = info.all_image_info_size;
     *addr = 0xfffffff007004000 + info.all_image_info_size;
     return 0;
 }
@@ -89,6 +92,36 @@ void kwrite32(uint64_t where, uint32_t what) {
 void kwrite64(uint64_t where, uint64_t what) {
     uint64_t _what = what;
     kwritebuf(where, &_what, sizeof(uint64_t));
+}
+
+uint64_t kalloc(size_t sz) {
+    mach_vm_address_t va = 0;
+    kern_return_t ret = mach_vm_allocate(tfp0, &va, sz, VM_FLAGS_ANYWHERE);
+    if(ret == KERN_SUCCESS) {
+        return va;
+    }
+    return -1;
+}
+
+void kfree(uint64_t kaddr, size_t sz) {
+    kern_return_t ret = mach_vm_deallocate(tfp0, kaddr, sz);
+    if(ret == KERN_SUCCESS)
+    {
+        return;
+    }
+    printf("kfree failed\n");
+    exit(1);
+}
+
+const uint64_t kernel_address_space_base = 0xffff000000000000;
+void kmemcpy(uint64_t dest, uint64_t src, uint32_t length) {
+    if (dest >= kernel_address_space_base) {
+      // copy to kernel:
+      kwritebuf(dest, (void*) src, length);
+    } else {
+      // copy from kernel
+      kreadbuf(src, (void*)dest, length);
+    }
 }
 
 void khexdump(uint64_t addr, size_t size) {

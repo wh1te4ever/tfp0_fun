@@ -1,0 +1,10 @@
+{
+    "files.associations": {
+        "arm64_state.h": "c",
+        "find_port.h": "c",
+        "kcall.h": "c",
+        "offsets.h": "c",
+        "pthread.h": "c",
+        "krw.h": "c"
+    }
+}

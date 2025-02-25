@@ -5,12 +5,19 @@
 #include <inttypes.h>
 #include <errno.h>
 #include <stdlib.h> 
+#include <unistd.h>
 
 #include "main.h"
 #include "krw.h"
+#include "offsets.h"
+#include "kdbg.h"
+#include "kutils.h"
+#include "kcall.h"
+#include "kexecute.h"
 
 task_t tfp0 = MACH_PORT_NULL;
-static uint64_t kbase = 0;
+extern uint64_t kbase;
+extern uint64_t kslide;
 
 static kern_return_t
 init_tfp0(void) {
@@ -36,13 +43,32 @@ init_tfp0(void) {
 }
 
 int main(int argc, char *argv[], char *envp[]) {
+
+	offsets_init();
+
 	if(init_tfp0() == KERN_SUCCESS) {
 		printf("tfp0: 0x%" PRIx32 "\n", tfp0);
 
     	int r = get_kbase(&kbase);
-    	printf("get_kbase ret: %d, kbase: 0x%llx\n", r, kbase);
+    	printf("get_kbase ret: %d, kbase: 0x%llx, kslide: 0x%llx\n", r, kbase, kslide);
 
-		khexdump(kbase, 256);
+		// init_kexecute();
+
+		// // printf("init_kexec seems working\n");
+		// // kexecute();
+		// uint64_t kret = kexecute(0xFFFFFFF0062613E4 + kslide, 1, 0, 0, 0, 0, 0, 0);
+		// printf("kret = 0x%llx\n", kret);
+		// // sleep(1);
+
+		// term_kexecute();
+
+		// uint64_t kptr = kalloc(0x100);
+		// khexdump(kptr-0x60, 0x100);
+		// khexdump(ksym(KSYMBOL_X21_JOP_GADGET), 0x170);
+		// kfree(kptr, 0x100);
+		// khexdump(kptr, 0x100);
+
+		test_kdbg();
 
 		mach_port_deallocate(mach_task_self(), tfp0);
 	}
