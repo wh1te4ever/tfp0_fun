@@ -1,5 +1,9 @@
 #include "main.h"
 #include "krw.h"
+#include "offsets.h"
+#include "kutils.h"
+#include "kexecute.h"
+#include "kcall8.h"
 
 task_t tfp0 = MACH_PORT_NULL;
 extern uint64_t kbase;
@@ -29,10 +33,39 @@ init_tfp0(void) {
 }
 
 int main(int argc, char *argv[], char *envp[]) {
+
+	offsets_init();
+
 	if(init_tfp0() == KERN_SUCCESS) {
 		printf("tfp0: 0x%" PRIx32 "\n", tfp0);
 
 		int r = get_kbase(&kbase);
     	printf("get_kbase ret: %d, kbase: 0x%llx, kslide: 0x%llx\n", r, kbase, kslide);
+
+		// uint64_t our_task = task_self_addr();
+		// printf("our_task = 0x%llx\n", our_task);
+
+		init_kexecute();
+
+		//kexecute works
+		uint64_t kret = kexecute(ksym(KSYMBOL_RET_300), 1, 0, 0, 0, 0, 0, 0);
+		printf("kexecute KSYMBOL_RET_300 kret = %llu\n", kret);
+
+		//kcall8 works
+		kret = kcall8(ksym(KSYMBOL_RET_300), 1, 0, 0, 0, 0, 0, 0, 0);
+		printf("kcall8 KSYMBOL_RET_300 kret = %llu\n", kret);
+
+		uint64_t kalloc_sz = 0x200;
+		uint64_t kptr = kcall8(ksym(KSYMBOL_KALLOC_EXTERNAL), kalloc_sz, 0, 0, 0, 0, 0, 0, 0);
+		printf("kcall8 KSYMBOL_KALLOC_EXTERNAL(0x%llx) kptr = 0x%llx\n", kalloc_sz, kptr);
+
+		khexdump(kptr, kalloc_sz);
+
+		kret = kcall8(ksym(KSYMBOL_KFREE), kptr, kalloc_sz, 0, 0, 0, 0, 0, 0);
+		printf("kcall8 KSYMBOL_KFREE kret = 0x%llx\n", kret);
+
+		term_kexecute();
+
+		mach_port_deallocate(mach_task_self(), tfp0);
 	}
 }

@@ -11,7 +11,7 @@ include $(THEOS)/makefiles/common.mk
 
 TOOL_NAME = kcall8
 
-kcall8_FILES = main.m krw.c
+kcall8_FILES = main.m krw.c kutils.c kexecute.c find_port.c offsets.m kcall8.c
 kcall8_CFLAGS = -fobjc-arc
 kcall8_CODESIGN_FLAGS = -Sentitlements.plist
 kcall8_FRAMEWORKS = IOKit
