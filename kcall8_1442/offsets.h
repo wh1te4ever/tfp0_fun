@@ -18,7 +18,8 @@ enum ksymbol {
   KSYMBOL_KERNPROC,
   KSYMBOL_RET_300,
   KSYMBOL_KALLOC_EXTERNAL,
-  KSYMBOL_KFREE
+  KSYMBOL_KFREE,
+  KSYMBOL_PANIC
 };
 
 extern uint32_t off_ipc_port_ip_kobject;

