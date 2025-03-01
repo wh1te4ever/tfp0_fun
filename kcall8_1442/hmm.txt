@@ -1,0 +1,4 @@
+0xfffffff00804672c : add x0, x9, x11, asr #1 ; cbz x10, #0xfffffff00804673c ; ldr x9, [x0] ; ldr x8, [x9, w8, uxtw] ; ldp x1, x2, [x19, #0x10] ; ldp x3, x4, [x19, #0x20] ; ldp x5, x6, [x19, #0x30] ; blr x8
+0xfffffff008046720 : and x10, x11, #1 ; orr x12, x10, x8 ; cbz x12, #0xfffffff008046754 ; add x0, x9, x11, asr #1 ; cbz x10, #0xfffffff00804673c ; ldr x9, [x0] ; ldr x8, [x9, w8, uxtw] ; ldp x1, x2, [x19, #0x10] ; ldp x3, x4, [x19, #0x20] ; ldp x5, x6, [x19, #0x30] ; blr x8
+0xfffffff0080386bc : bl #0xfffffff007a83e08 ; ldr x0, [x19, #0xa8] ; ldp x29, x30, [sp, #0x10] ; ldp x20, x19, [sp], #0x20 ; ret ; ldp x4, x8, [x0, #0xa0] ; ldp x1, x2, [x0, #0xb0] ; mov x0, x8 ; movz w3, #0 ; br x4
+0xfffffff0084e6c94 : ldr x8, [x20, #0x50] ; b #0xfffffff0084e6ca0 ; str x8, [sp, #8] ; str x22, [x8] ; movz w1, #0x10 ; bl #0xfffffff009167640 ; ldr x8, [x20, #8] ; ldp x0, x1, [x20, #0x18] ; ldp x2, x3, [x20, #0x28] ; blr x8
