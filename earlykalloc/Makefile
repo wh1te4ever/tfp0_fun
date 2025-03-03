@@ -11,7 +11,7 @@ include $(THEOS)/makefiles/common.mk
 
 TOOL_NAME = earlykalloc
 
-earlykalloc_FILES = main.m krw.c
+earlykalloc_FILES = main.m krw.c kalloc_pipe.c offsets.m kutils.c kexecute.c find_port.c kcall8.c
 earlykalloc_CFLAGS = -fobjc-arc
 earlykalloc_CODESIGN_FLAGS = -Sentitlements.plist
 earlykalloc_FRAMEWORKS = IOKit
