@@ -1,12 +1,20 @@
+GO_EASY_ON_ME = 1
+DEBUG = 0
+FINALPACKAGE = 1
+
+THEOS_DEVICE_IP = 127.0.0.1 -p 2222
+
 TARGET := iphone:clang:latest:7.0
+ARCHS = arm64
 
 include $(THEOS)/makefiles/common.mk
 
 TOOL_NAME = earlykalloc
 
-earlykalloc_FILES = main.m
+earlykalloc_FILES = main.m krw.c
 earlykalloc_CFLAGS = -fobjc-arc
 earlykalloc_CODESIGN_FLAGS = -Sentitlements.plist
+earlykalloc_FRAMEWORKS = IOKit
 earlykalloc_INSTALL_PATH = /usr/local/bin
 
 include $(THEOS_MAKE_PATH)/tool.mk
