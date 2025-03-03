@@ -56,15 +56,17 @@ int main(int argc, char *argv[], char *envp[]) {
 		printf("kcall8 KSYMBOL_RET_300 kret = %llu\n", kret);
 
 		//kcall8 panic with x1-x7 
-		uint64_t kalloc_sz = 0x200;
+		const uint64_t kalloc_sz = 0x1000;
 		uint64_t kptr = kcall8(ksym(KSYMBOL_KALLOC_EXTERNAL), kalloc_sz, 0, 0, 0, 0, 0, 0, 0);
 		printf("kcall8 KSYMBOL_KALLOC_EXTERNAL(0x%llx) kptr = 0x%llx\n", kalloc_sz, kptr);
 
-		//br x1, 0xdeadbeef41424341 = invalid kaddr  
-		kcall8(0xFFFFFFF00909C8FC + kslide, 0xdeadbeef41424340, 0xdeadbeef41424341, 0xdeadbeef41424342, 0xdeadbeef41424343, 0xdeadbeef41424344, 0xdeadbeef41424345, 0xdeadbeef41424346, 0xdeadbeef41424347);
-
+		//br x3, = 0xdeadbeef41424343 invalid pc  
+		// kcall8(kgad(KGADGET_MOV_X15_X2__BR_X3) + 4, 0xdeadbeef41424340, 0xdeadbeef41424341, 0xdeadbeef41424342, 0xdeadbeef41424343, 0xdeadbeef41424344, 0xdeadbeef41424345, 0xdeadbeef41424346, 0xdeadbeef41424347);
+		
 		kret = kcall8(ksym(KSYMBOL_KFREE), kptr, kalloc_sz, 0, 0, 0, 0, 0, 0);
 		printf("kcall8 KSYMBOL_KFREE kret = 0x%llx\n", kret);
+
+		khexdump(kptr, kalloc_sz+0x10);
 
 		term_kexecute();
 
