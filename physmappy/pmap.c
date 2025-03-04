@@ -191,9 +191,7 @@ int pmap_map_in(uint64_t pmap, uint64_t uaStart, uint64_t paStart, uint64_t size
 	}
 
 	// Allocate all page tables that need to be allocated
-    printf("??\n");
-	if (pmap_expand_range(pmap, uaStart, size) != 0) return -1;
-    printf("???\n");
+	if (pmap_expand_range(pmap, uaStart, size) != 0) return -1;\
 	
 	// Insert entries into L3 pages
 	for (uint64_t i = 0; i < l2Count; i++) {

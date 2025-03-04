@@ -11,3 +11,11 @@ int physwritebuf(uint64_t pa, const void* input, size_t size);
 int physwrite8(uint64_t pa, uint8_t v);
 
 int physrw_handoff(pid_t pid);
+
+uint32_t kread32_phys(uint64_t where);
+
+uint64_t kread64_phys(uint64_t where);
+
+void kwrite32_phys(uint64_t where, uint32_t what);
+
+void kwrite64_phys(uint64_t where, uint64_t what);

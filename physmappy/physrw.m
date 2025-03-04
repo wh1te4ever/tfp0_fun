@@ -113,3 +113,105 @@ int physrw_handoff(pid_t pid)
 
 	return ret;
 }
+
+//phys r/w using PPLRW_USER_MAPPING_OFFSET
+void *physrw_phystouaddr(uint64_t pa)
+{
+	errno = 0;
+
+	uint64_t physBase = kread64(ksym(KSYMBOL_gPhysBase)), physSize = kread64(ksym(KSYMBOL_gPhysSize));
+	bool doBoundaryCheck = (physBase != 0 && physSize != 0);
+	if (doBoundaryCheck) {
+		if (pa < physBase || pa >= (physBase + physSize)) {
+			errno = 1030;
+			return 0;
+		}
+	}
+
+	return (void *)(pa + PPLRW_USER_MAPPING_OFFSET);
+}
+
+int physrw_physreadbuf(uint64_t pa, void* output, size_t size)
+{
+	void *uaddr = physrw_phystouaddr(pa);
+	if (!uaddr && errno != 0) {
+		memset(output, 0x0, size);
+		return errno;
+	}
+
+	asm volatile("dmb sy");
+	memcpy(output, uaddr, size);
+	return 0;
+}
+
+int physrw_physwritebuf(uint64_t pa, const void* input, size_t size)
+{
+	void *uaddr = physrw_phystouaddr(pa);
+	if (!uaddr && errno != 0) {
+		return errno;
+	}
+
+	memcpy(uaddr, input, size);
+	asm volatile("dmb sy");
+	return 0;
+}
+
+int kreadbuf_phys(uint64_t kaddr, void* output, size_t size)
+{
+	memset(output, 0, size);
+
+	__block int pr = 0;
+	enumerate_pages(kaddr, size, vm_real_kernel_page_size, ^bool(uint64_t curKaddr, size_t curSize){
+		uint64_t curPhys = kvtophys(curKaddr);
+		if (curPhys == 0 && errno != 0) {
+			pr = errno;
+			return false;
+		}
+		pr = physrw_physreadbuf(curPhys, &output[curKaddr - kaddr], curSize);
+		if (pr != 0) {
+			return false;
+		}
+		return true;
+	});
+	return pr;
+}
+
+int kwritebuf_phys(uint64_t kaddr, const void* input, size_t size)
+{
+	__block int pr = 0;
+	enumerate_pages(kaddr, size, vm_real_kernel_page_size, ^bool(uint64_t curKaddr, size_t curSize){
+		uint64_t curPhys = kvtophys(curKaddr);
+		if (curPhys == 0 && errno != 0) {
+			pr = errno;
+			return false;
+		}
+		pr = physrw_physwritebuf(curPhys, &input[curKaddr - kaddr], curSize);
+		if (pr != 0) {
+			return false;
+		}
+		return true;
+	});
+	return pr;
+}
+
+uint32_t kread32_phys(uint64_t where) {
+    uint32_t out;
+    kreadbuf_phys(where, &out, sizeof(uint32_t));
+    return out;
+}
+
+uint64_t kread64_phys(uint64_t where) {
+    uint64_t out;
+    kreadbuf_phys(where, &out, sizeof(uint64_t));
+    return out;
+}
+
+void kwrite32_phys(uint64_t where, uint32_t what) {
+    uint32_t _what = what;
+    kwritebuf_phys(where, &_what, sizeof(uint32_t));
+}
+
+void kwrite64_phys(uint64_t where, uint64_t what) {
+    uint64_t _what = what;
+    kwritebuf_phys(where, &_what, sizeof(uint64_t));
+}

