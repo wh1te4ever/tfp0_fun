@@ -4,7 +4,7 @@
 #include "kalloc_pipe.h"
 
 uint64_t kcall8(uint64_t addr, uint64_t x0, uint64_t x1, uint64_t x2, uint64_t x3, uint64_t x4, uint64_t x5, uint64_t x6, uint64_t x7) {
-    pipe_info_t *kpage_pipe = kalloc_via_pipe(0x1000);
+    pipe_info_t *kpage_pipe = kalloc_via_pipe(0x4000);
     uint64_t kpage = kpage_pipe->kern_buffer;
 
     kwrite64(kpage, kpage);

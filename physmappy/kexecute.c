@@ -35,7 +35,7 @@ static uint64_t fake_vtable;
 static uint64_t fake_client;
 static pipe_info_t *fake_vtable_pipe;
 static pipe_info_t *fake_client_pipe;
-const int fake_kalloc_size = 0x1000;
+const int fake_kalloc_size = 0x4000;
 
 void init_kexecute(void) {
     user_client = prepare_user_client();
