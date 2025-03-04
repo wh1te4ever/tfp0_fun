@@ -106,6 +106,12 @@ kwritebuf(uint64_t kaddr, const void *buf, size_t sz) {
     return KERN_SUCCESS;
 }
 
+uint16_t kread16(uint64_t where) {
+    uint16_t out;
+    kreadbuf(where, &out, sizeof(uint16_t));
+    return out;
+}
+
 uint32_t kread32(uint64_t where) {
     uint32_t out;
     kreadbuf(where, &out, sizeof(uint32_t));
@@ -116,6 +122,11 @@ uint64_t kread64(uint64_t where) {
     uint64_t out;
     kreadbuf(where, &out, sizeof(uint64_t));
     return out;
+}
+
+void kwrite16(uint64_t where, uint16_t what) {
+    uint16_t _what = what;
+    kwritebuf(where, &_what, sizeof(uint16_t));
 }
 
 void kwrite32(uint64_t where, uint32_t what) {

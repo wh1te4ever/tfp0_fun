@@ -93,7 +93,7 @@ int main(int argc, char *argv[], char *envp[]) {
 		term_kexecute();
 
 		printf("done\n");
-		while(1) {};
+		// while(1) {};
 	}
 
 	return 0;

@@ -53,6 +53,13 @@ uint64_t physread64(uint64_t pa)
 	return v;
 }
 
+uint16_t physread16(uint64_t pa)
+{
+	uint16_t v;
+	physreadbuf(pa, &v, sizeof(v));
+	return v;
+}
+
 uint32_t physread32(uint64_t pa)
 {
 	uint32_t v;
@@ -83,6 +90,10 @@ int physwrite8(uint64_t pa, uint8_t v)
 	return physwritebuf(pa, &v, sizeof(v));
 }
 
+int physwrite16(uint64_t pa, uint16_t v)
+{
+	return physwritebuf(pa, &v, sizeof(v));
+}
 
 int physrw_handoff(pid_t pid)
 {

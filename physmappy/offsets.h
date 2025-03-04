@@ -28,7 +28,9 @@ enum ksymbol {
   KSYMBOL_kvtophys,
   KSYMBOL_cpu_ttep,
   KSYMBOL_pmap_enter_options_addr,
-  KSYMBOL_pmap_remove_options
+  KSYMBOL_pmap_remove_options,
+  KSYMBOL_vm_first_phys,
+  KSYMBOL_pv_head_table
 };
 
 extern uint32_t off_ipc_port_ip_kobject;
@@ -45,6 +47,8 @@ extern uint32_t off_task_map;
 extern uint32_t off_vm_map_pmap;
 extern uint32_t off_pmap_ttep;
 extern uint32_t off_pmap_type;
+extern uint32_t off_pt_desc_pmap;
+extern uint32_t off_pt_desc_ptd_info;
 
 uint64_t kgad(enum kgadget sym);
 uint64_t ksym(enum ksymbol sym);

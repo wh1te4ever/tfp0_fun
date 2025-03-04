@@ -38,3 +38,6 @@ vm_size_t get_kernel_page_size();
 
 int pmap_map_in(uint64_t pmap, uint64_t uaStart, uint64_t paStart, uint64_t size);
 void pmap_remove(uint64_t pmap, uint64_t start, uint64_t end);
+uint64_t pa_index(uint64_t pa);
+uint64_t pai_to_pvh(uint64_t pai);
+uint64_t pvh_ptd(uint64_t pvh);

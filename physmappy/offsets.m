@@ -59,6 +59,9 @@ uint64_t ksymbols_iphone_8_18d70[] = {
     0xFFFFFFF007715CF0, // KSYMBOL_cpu_ttep
     0xFFFFFFF007B5EEBC, // KSYMBOL_pmap_enter_options_addr
     0xFFFFFFF007B63A70, // KSYMBOL_pmap_remove_options
+    0xFFFFFFF007715D08, // KSYMBOL_vm_first_phys    xref aPmapEnterOverU
+    0xFFFFFFF007715D40, // KSYMBOL_pv_head_table
+
 };
 
 uint64_t ksym(enum ksymbol sym)
@@ -82,6 +85,8 @@ uint32_t off_task_map = 0;
 uint32_t off_vm_map_pmap = 0;
 uint32_t off_pmap_ttep = 0;
 uint32_t off_pmap_type = 0;
+uint32_t off_pt_desc_pmap = 0;
+uint32_t off_pt_desc_ptd_info = 0;
 
 void offsets_init(void) {
     if (!(SYSTEM_VERSION_EQUAL_TO(@"14.4.2"))) {
@@ -122,6 +127,10 @@ void offsets_init(void) {
 
         //Xref string: pmap_trim_internal
         off_pmap_type = 0xE2;   //A11 = 0xE2, A9 = 0xE1
+
+        //https://github.com/apple-oss-distributions/xnu/blob/xnu-7195.81.3/osfmk/arm/pmap.c#L1031
+        off_pt_desc_pmap = 0x10;
+        off_pt_desc_ptd_info = off_pt_desc_pmap + (/*kconstant(PT_INDEX_MAX)*/ 1 * sizeof(uint64_t));
 
         gadgets = kgadgets_iphone_8_18d70;
         symbols = ksymbols_iphone_8_18d70;

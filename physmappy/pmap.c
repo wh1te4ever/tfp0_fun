@@ -6,6 +6,8 @@
 #include "translation.h"
 #include "kfunc.h"
 #include "pte.h"
+#include "pvh.h"
+
 #include <stdlib.h>
 #include <unistd.h>
 #include <stdio.h>
@@ -191,7 +193,7 @@ int pmap_map_in(uint64_t pmap, uint64_t uaStart, uint64_t paStart, uint64_t size
 	}
 
 	// Allocate all page tables that need to be allocated
-	if (pmap_expand_range(pmap, uaStart, size) != 0) return -1;\
+	if (pmap_expand_range(pmap, uaStart, size) != 0) return -1;
 	
 	// Insert entries into L3 pages
 	for (uint64_t i = 0; i < l2Count; i++) {
@@ -215,7 +217,35 @@ int pmap_map_in(uint64_t pmap, uint64_t uaStart, uint64_t paStart, uint64_t size
 		uint64_t level2Table = vtophys_lvl(ttep, uaL2Cur, &leafLevel, NULL);
 		if (!level2Table) return -2;
 		physwritebuf(level2Table, tableToWrite, vm_real_kernel_page_size);
+
+        // Reference count of new page table must be 0!
+	    // original ref count is 1 because the table holds one PTE
+	    // Our new PTEs are not part of the pmap layer though so refcount needs to be 0
+        uint64_t pvh = pai_to_pvh(pa_index(level2Table));
+		uint64_t ptdp = pvh_ptd(pvh);
+        // printf("ptdp = 0x%llx, off_pt_desc_ptd_info = 0x%x\n", ptdp, off_pt_desc_ptd_info);
+
+		uint16_t pinfo_refCount = kread16(ptdp + off_pt_desc_ptd_info);
+        // printf("pinfo_refCount = 0x%hx\n", pinfo_refCount);
+
+        kwrite16(ptdp + off_pt_desc_ptd_info, 0);
 	}
 
 	return 0;
+}
+
+#define atop(x) ((vm_address_t)(x) >> vm_kernel_page_shift)
+uint64_t pa_index(uint64_t pa)
+{
+	return atop(pa - kread64(ksym(KSYMBOL_vm_first_phys)));
+}
+
+uint64_t pai_to_pvh(uint64_t pai)
+{
+	return kread64(ksym(KSYMBOL_pv_head_table)) + (pai * 8);
+}
+
+uint64_t pvh_ptd(uint64_t pvh)
+{
+	return ((kread64(pvh) & PVH_LIST_MASK) | PVH_HIGH_FLAGS);
 }
