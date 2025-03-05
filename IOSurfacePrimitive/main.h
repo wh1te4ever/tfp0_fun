@@ -9,3 +9,12 @@
 
 task_t tfp0;
 void *libkernrw;
+
+int *pipefds;
+uint8_t *pipe_buffer;
+size_t pipe_buffer_size;
+
+uint64_t IOSurfaceRootUserClient_addr;
+
+void read_pipe();
+void write_pipe();

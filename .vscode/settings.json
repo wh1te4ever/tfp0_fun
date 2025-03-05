@@ -1,5 +1,7 @@
 {
     "files.associations": {
-        "offsets.h": "c"
+        "offsets.h": "c",
+        "kprimitive.h": "c",
+        "*.m": "c"
     }
 }
