@@ -1,0 +1,11 @@
+#include <mach/mach.h>
+#include <stdio.h>
+#include <mach-o/loader.h>
+#include <unistd.h>
+#include <inttypes.h>
+#include <errno.h>
+#include <stdlib.h> 
+#include <unistd.h>
+
+task_t tfp0;
+void *libkernrw;
