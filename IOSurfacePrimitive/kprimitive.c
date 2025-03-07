@@ -22,6 +22,7 @@ void read_pipe()
 {
     size_t read_size = pipe_buffer_size - 1;
     read(pipefds[0], pipe_buffer, read_size);
+    // printf("pipe_buffer = %s\n", pipe_buffer)
 }
 
 void write_pipe()
