@@ -2,19 +2,17 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <pthread.h>
-#include <mach/mach_types.h>
-
 
 #include "kdbg.h"
 #include "kutils.h"
-#include "offsets.h"
 #include "krw.h"
-// #include "kmem.h"
-// #include "symbols.h"
+#include "offsets.h"
 #include "kcall.h"
 #include "find_port.h"
 #include "early_kalloc.h"
 #include "arm64_state.h"
+
+#include "kdp_server.h"
 
 /*
  A thread-local iOS kernel debugger for all ARM64 devices
@@ -111,24 +109,39 @@ Finding a modifying the stuck thread state:
  We then expose the state at the bp to a callback which can modify it before unblocking the stuck kernel thread.
  
 Limitations:
- I only wrote code to support one breakpoint at the moment, expect a fuller-featured, interactive version soon!
- 
  Don't set breakpoints when things like spinlocks are held, it will go very badly.
- 
- Single-step won't work. In the breakpoint handler you have to emulate the instruction and manually move pc on.
- 
- It's slow! This is unlikely to change give how it works, but hey, you're modifying kernel thread state from userspace on the same machine!
- 
+
  */
+
+volatile mach_port_t debugee_thread_port = MACH_PORT_NULL;
 
 // scheduling mach trap to yield the cpu
 extern boolean_t swtch_pri(int pri);
+
+volatile mach_port_t busy_thread_port = MACH_PORT_NULL;
+void* busy_thread_func(void* arg) {
+  busy_thread_port = mach_thread_self();
+  volatile int i = 0;
+  for(;;){i++;}
+  return NULL;
+}
+
+pthread_t busy_thread_t;
+void force_schedule_off() {
+  if (busy_thread_port == MACH_PORT_NULL) {
+    pthread_create(&busy_thread_t, NULL, busy_thread_func, NULL);
+    while(busy_thread_port == MACH_PORT_NULL){;}
+  }
+  
+  thread_switch(busy_thread_port, 0, 0);
+  
+}
 
 // pin the current thread to a processor, returns a pointer to the processor we're pinned to
 uint64_t pin_current_thread() {
   // get the current thread_t:
   uint64_t th = current_thread();
-
+  
 #if 0
   // get the processor_t this thread last ran on
   uint64_t processor = kread64(th + koffset(KSTRUCT_OFFSET_THREAD_LAST_PROCESSOR));
@@ -149,13 +162,20 @@ uint64_t pin_current_thread() {
   
   uint64_t processor = kread64(cpu_data + off_cpu_data_cpu_processor);
   printf("trying to pin to cpu0: %llx\n", processor);
+  sleep(1); // there was a weird kernel panic.. 
+  
   // pin to that cpu
   // this is probably fine...
   kwrite64(th + off_thread_bound_processor, processor);
   
   // that binding will only take account once we get scheduled off and back on again so yield the cpu:
   printf("pin_current_thread yielding cpu\n");
-  swtch_pri(0);
+  //swtch_pri(0);
+  /*int switched = 0;
+  while (!switched) {
+    switched = swtch();
+  }*/
+  force_schedule_off();
   printf("pin_current_thread back on cpu\n");
   uint64_t chosen = kread64(th + off_thread_chosen_processor);
   printf("running on %llx\n", chosen);
@@ -302,7 +322,7 @@ __TEXT_EXEC:__text:FFFFFFF0070CC1E8                 B               sub_FFFFFFF0
 in the state which we get loaded:
 x21 should point to the actual saved ACT_CONTEXT since x21 will be used in the return path if no ASTs are taken
 x0 should point to the saved state which we want the debugged syscall to see (not ACT_CONTEXT!)
-x1 should be the svn syndrome number (ESR_EC(esr) == ESR_EC_SVC_64)
+x1 should be the svc syndrome number (ESR_EC(esr) == ESR_EC_SVC_64)
 x2 should be the pc of the svc instruction
 sp should be the right place on the thread's kernel stack
 
@@ -312,7 +332,11 @@ sp should be the right place on the thread's kernel stack
 struct syscall_args {
   uint32_t number;
   uint64_t arg[8];
+  uint64_t retval[2]; //x0 and x1 on syscall return
 };
+
+uint64_t fake_syscall_args_kern = 0;
+uint64_t eret_return_state_kern = 0;
 
 void do_syscall_with_pstate_d_unmasked(struct syscall_args* args) {
   // get the target thread_t
@@ -344,8 +368,9 @@ void do_syscall_with_pstate_d_unmasked(struct syscall_args* args) {
   fake_syscall_args.ss.ss_64.cpsr = 0;
   
   // allocate a copy of that in wired kernel memory:
-  //uint64_t fake_syscall_args_kern = kmem_alloc_wired(sizeof(arm_context_t));
-  uint64_t fake_syscall_args_kern = kalloc(sizeof(arm_context_t));
+  if (fake_syscall_args_kern == 0) {
+    fake_syscall_args_kern = early_kalloc(sizeof(arm_context_t));
+  }
   kmemcpy(fake_syscall_args_kern, (uint64_t)&fake_syscall_args, sizeof(arm_context_t));
   
   // this state needs to be a bit more complete...
@@ -383,13 +408,47 @@ void do_syscall_with_pstate_d_unmasked(struct syscall_args* args) {
 #define SPSR_F   (1<<6)
 #define SPSR_EL1_SP0 (0x4)
   eret_return_state.ss.ss_64.cpsr = SPSR_A | SPSR_I | SPSR_F | SPSR_EL1_SP0;
-  
-  //uint64_t eret_return_state_kern = kmem_alloc_wired(sizeof(arm_context_t));
-  uint64_t eret_return_state_kern = kalloc(sizeof(arm_context_t));
+
+  if (eret_return_state_kern == 0) {
+    eret_return_state_kern = early_kalloc(sizeof(arm_context_t));
+  }
   kmemcpy(eret_return_state_kern, (uint64_t)&eret_return_state, sizeof(arm_context_t));
   
   // make the arbitrary call
   kcall(ksym(KSYMBOL_X21_JOP_GADGET), 2, eret_return_state_kern, ksym(KSYMBOL_EXCEPTION_RETURN));
+  
+  // kcall_retval won't be the return value of the syscall.
+  // the syscall code will write its return value(s) into fake_syscall_args_kern (which the syscall code believes is also
+  // the true userspace state.) To access the syscall return value we'll have to read it from there.
+  // Wrapping this is made more complicated by the fact that syscalls don't have a single calling convention.
+  // An XNU ARM64 syscall can only return up to 64 bits of data but depending on the syscall type they might be split over x0 and x1
+  // on return.
+  // The syscall handlers see a pointer to an 8 byte buffer as their third argument, eg:
+  //   pipe(proc_t p, __unused struct pipe_args *uap, int32_t *retval)
+  // pipe treats retval as a pointer to a buffer holding two int32_t's, and it's marked as _SYSCALL_RET_INT_T
+  // at kernel build time the shell script makesyscalls.sh will parse the declaration of the pipe syscall in syscalls.master:
+  //   42  AUE_PIPE  ALL  { int pipe(void); }
+  // the return type there is int so in the syscalls table it will get the type _SYSCALL_RET_INT_T.
+  // then, when the syscall returns arm_prepare_u64_syscall_return will use that type to set the userspace registers correctly.
+  //
+  // _SYSCALL_RET_INT_T, _SYSCALL_RET_UINT_T: x0 and x1 are set to the lower and upper dwords of the syscall output, so for the pipe case
+  //   x0 will be the first dword which retval pointed to, and x1 the second.
+  // for all other return types except _SYSCALL_RET_NONE x0 will be set to the full 64-bit value and x1 will be cleared.
+  //
+  // you can see this in action in the ARM64 wrapper for the pipe syscall:
+  //   mov    x9, x0        // Stash FD array
+  //   SYSCALL_NONAME(pipe, 0, cerror_nocancel)
+  //   stp    w0, w1, [x9]    // Save results
+  //   mov    x0, #0        // Success
+  //   ret
+  //
+  // note that x0 and x1 will be updated in fake_syscall_args_kern which is not the state that will be restored,
+  // so we have to use tfp0 to read them back. In order to correctly wrap the syscall it's required to know the
+  // correct return type. That can be handled by the wrapper so this code will read x0 and x1 and return them
+  // as two 64-bit values. It's up to the wrapper to use them correctly based on the type of the wrapped syscall.
+  
+  args->retval[0] = kread64(fake_syscall_args_kern + offsetof(arm_context_t, ss.ss_64.x[0]));
+  args->retval[1] = kread64(fake_syscall_args_kern + offsetof(arm_context_t, ss.ss_64.x[1]));
 }
 
 
@@ -406,17 +465,22 @@ void do_syscall_with_pstate_d_unmasked(struct syscall_args* args) {
  FFFFFFF0071E1A08 LDP  X28, X27, [SP+0x20+var_20],#0x30
  FFFFFFF0071E1A0C RET
 
- lets just use the ERET case to get full register control an run that on a little ROP stack which then
+ lets just use the ERET case to get full register control and run that on a little ROP stack which then
  returns to thread_exception_return
  
  */
+
+uint64_t rop_stack_kern_base = 0;
+uint64_t rop_eret_return_state_kern = 0;
+
 void set_MDSCR_EL1_KDE(mach_port_t target_thread_port) {
   /* this state will be restored by an eret */
   arm_context_t eret_return_state = {0};
   
   // allocate a stack for the rop:
-  //uint64_t rop_stack_kern_base = kmem_alloc_wired(0x4000);
-  uint64_t rop_stack_kern_base = kalloc(0x1000);
+  if (rop_stack_kern_base == 0) {
+    rop_stack_kern_base = early_kalloc(0x1000);
+  }
   
   uint64_t rop_stack_kern_middle = rop_stack_kern_base + 0xc00;
   
@@ -440,17 +504,15 @@ void set_MDSCR_EL1_KDE(mach_port_t target_thread_port) {
 #define SPSR_EL1_SP0 (0x4)
   eret_return_state.ss.ss_64.cpsr = SPSR_A | SPSR_I | SPSR_F | SPSR_EL1_SP0;
   
-  //uint64_t eret_return_state_kern = kmem_alloc_wired(sizeof(arm_context_t));
-  uint64_t eret_return_state_kern = kalloc(sizeof(arm_context_t));
-  kmemcpy(eret_return_state_kern, (uint64_t)&eret_return_state, sizeof(arm_context_t));
+  if (rop_eret_return_state_kern == 0) {
+    rop_eret_return_state_kern = early_kalloc(sizeof(arm_context_t));
+  }
+  kmemcpy(rop_eret_return_state_kern, (uint64_t)&eret_return_state, sizeof(arm_context_t));
   
   // make the arbitrary call
-  kcall(ksym(KSYMBOL_X21_JOP_GADGET), 2, eret_return_state_kern, ksym(KSYMBOL_EXCEPTION_RETURN));
+  kcall(ksym(KSYMBOL_X21_JOP_GADGET), 2, rop_eret_return_state_kern, ksym(KSYMBOL_EXCEPTION_RETURN));
   
   printf("returned from trying to set the KDE bit\n");
-  
-  // free the stack we used:
-  //kmem_free(rop_stack_kern_base, 0x4000);
 }
 
 
@@ -519,15 +581,84 @@ typedef void (*breakpoint_callback)(arm_context_t* context);
 
 volatile int syscall_complete = 0;
 
-void handle_kernel_bp_hits(mach_port_t target_thread_port, uint64_t looper_pc, uint64_t breakpoint, breakpoint_callback callback) {
+int unwind_stack(uint64_t fp, uint64_t* looper_state, uint64_t* breakpoint_state) {
+  uint64_t lower = fp;
+  uint64_t upper = fp+0x1000;
+  // walk back up from Switch_context
+  printf("fp: %llx\n", fp);
+  
+  uint64_t pc = kread64(fp+8);
+  printf("pc: %llx\n", pc);
+
+  
+  fp = kread64(fp);
+  if (fp < lower || fp > upper) {
+    printf("fp doesn't look right, aborting\n");
+    return 0;
+  }
+  printf("fp: %llx\n", fp);
+  pc = kread64(fp+8);
+  printf("pc: %llx\n", pc);
+  
+  fp = kread64(fp);
+  if (fp < lower || fp > upper) {
+    printf("fp doesn't look right, aborting\n");
+    return 0;
+  }
+  printf("fp: %llx\n", fp);
+  pc = kread64(fp+8);
+  printf("pc: %llx\n", pc);
+  
+  uint64_t saved_flavor = kread64(fp+0x10);
+  printf("saved flavor: %016llx\n", saved_flavor); // this is the saved state for the infinite looper
+  if (saved_flavor != 0x4800000015) {
+    printf("saved flavor doesn't look right, aborting\n");
+    return 0;
+  }
+  *looper_state = fp+0x10;
+  
+  
+  fp = kread64(fp);
+  if (fp < lower || fp > upper) {
+    printf("fp doesn't look right, aborting\n");
+    return 0;
+  }
+  printf("fp: %llx\n", fp);
+  pc = kread64(fp+8);
+  printf("pc: %llx\n", pc);
+  
+  fp = kread64(fp);
+  if (fp < lower || fp > upper) {
+    printf("fp doesn't look right, aborting\n");
+    return 0;
+  }
+  printf("fp: %llx\n", fp);
+  pc = kread64(fp+8);
+  printf("pc: %llx\n", pc);
+  
+  saved_flavor = kread64(fp+0x10);
+  printf("saved flavor: %016llx\n", saved_flavor); // this is the saved state for the breakpoint hit
+  if (saved_flavor != 0x4800000015) {
+    printf("saved flavor doesn't look right, aborting\n");
+    return 0;
+  }
+  *breakpoint_state = fp+0x10;
+  
+  return 1;
+}
+
+uint64_t hit_bp = 0;
+int is_singlestepping = 0;
+
+void handle_kernel_bp_hits(mach_port_t target_thread_port, uint64_t infinite_looper_pc, breakpoint_callback callback) {
   // get the target thread's thread_t
   uint64_t thread_port_addr = find_port_address(target_thread_port, MACH_MSG_TYPE_COPY_SEND);
   uint64_t thread_t_addr = kread64(thread_port_addr + off_ipc_port_ip_kobject);
   
   while (1) {
     uint64_t looper_saved_state = 0;
-    int found_it = 0;
-    while (!found_it) {
+    uint64_t bp_hitting_state = 0;
+    while (1) {
       if (syscall_complete) {
         return;
       }
@@ -557,107 +688,85 @@ void handle_kernel_bp_hits(mach_port_t target_thread_port, uint64_t looper_pc, u
         continue;
       }
       
-      uint64_t stack[128] = {0};
-      
-      // walk up from there and look for the saved state dumped by the fiq:
-      // note that it won't be right at the bottom of the stack
-      // instead there are the frames for:
-      //   ast_taken_kernel       <-- above this is the saved state which will get restored when the hw bp spinner gets rescheduled
-      //     thread_block_reason
-      //       thread_invoke
-      //         machine_switch_context
-      //           Switch_context <-- the frame actually at the bottom of the stack
-      
-      // should probably walk those stack frame properly, but this will do...
-      
-      // grab the stack
-      kmemcpy((uint64_t)&stack[0], sp, sizeof(stack));
-      //for (int i = 0; i < 128; i++) {
-      //  printf("%016llx\n", stack[i]);
-      //}
-      
-      for (int i = 0; i < 128; i++) {
-        uint64_t flavor_and_count = stack[i];
-        if (flavor_and_count != (ARM_SAVED_STATE64 | (((uint64_t)ARM_SAVED_STATE64_COUNT) << 32))) {
-          continue;
-        }
-        
-        arm_context_t* saved_state = (arm_context_t*)&stack[i];
-        
-        if (saved_state->ss.ss_64.pc != looper_pc) {
-          continue;
-        }
-        
-        found_it = 1;
-        looper_saved_state = sp + (i*sizeof(uint64_t));
-        printf("found the saved state probably at %llx\n", looper_saved_state); // should walk the stack properly..
-        break;
-      }
-      
+      printf("return address in the scheduled-off area: 0x%llx\n", saved_ksched_state.ss.ss_64.lr);
+
+      int found_it = unwind_stack(saved_ksched_state.ss.ss_64.fp, &looper_saved_state, &bp_hitting_state);
       if (!found_it) {
-        printf("unable to find the saved scheduler tick state on the stack, waiting a bit then trying again...\n");
-        sleep(1);
-        return;
-      }
-      
-    }
-    
-    
-    
-    // now keep walking up and find the saved state for the code which hit the BP:
-    uint64_t bp_hitting_state = looper_saved_state + sizeof(arm_context_t);
-    found_it = 0;
-    for (int i = 0; i < 1000; i++) {
-      uint64_t flavor_and_count = kread64(bp_hitting_state);
-      if (flavor_and_count != (ARM_SAVED_STATE64 | (((uint64_t)ARM_SAVED_STATE64_COUNT) << 32))) {
-        bp_hitting_state += 8;
         continue;
       }
-      
-      arm_context_t bp_context;
-      kmemcpy((uint64_t)&bp_context, bp_hitting_state, sizeof(arm_context_t));
-      
-      for (int i = 0; i < 40; i++) {
-        uint64_t* buf = (uint64_t*)&bp_context;
-        printf("%016llx\n", buf[i]);
-      }
-      
-      if (bp_context.ss.ss_64.pc != breakpoint) {
-        printf("hummm, found an unexpected breakpoint: %llx\n", bp_context.ss.ss_64.pc);
-      }
-      
-      found_it = 1;
       break;
     }
+
+    uint64_t looper_pc = kread64(looper_saved_state + offsetof(arm_context_t, ss.ss_64.pc));
+    printf("looper_pc: 0x%016llx\n", looper_pc);
     
-    if (!found_it) {
-      printf("unable to find bp hitting state\n");
+    if (looper_pc == ksym(KSYMBOL_EL1_HW_BP_INFINITE_LOOP)) {
+      printf("that's the looper PC for the EL1 HW BP infinite loop\n");
+    } else if (looper_pc == ksym(KSYMBOL_EL1_SW_STEP_INFINITE_LOOP)) {
+      printf("that's the looper PC for the EL1 SW STEP infinite loop\n");
+    } else {
+      printf("don't recognise that looper PC, keep looking...\n");
+      continue;
     }
-    
+  
     // fix up the bp hitting state so it will continue (with whatever modifications we want:)
     // get a copy of the state:
     arm_context_t bp_context;
     kmemcpy((uint64_t)&bp_context, bp_hitting_state, sizeof(arm_context_t));
-    
+  
+    // record the bp which was hit
+    hit_bp = bp_context.ss.ss_64.pc;
+  
     callback(&bp_context);
+    
+    // D2.12.3 describes the state machine for single stepping
+    // we need to do two things:
+    //   MDSCR_EL1.SS must be set (bit 0)
+    //   CPSR.SS must also be set - this can only be set by an eret
+    
+    if (bp_context.ss.ss_64.cpsr & (1<<21)) {
+      // client wants hardware singlestep
+      printf("client wants hardware single-step\n");
+      uint64_t DebugData = thread_get_debug_area(debugee_thread_port);
+      uint32_t mdscr_el1 = kread32(DebugData + offsetof(struct arm_debug_aggregate_state, ds64.mdscr_el1));
+      mdscr_el1 |= 1;
+      printf("mdscr_el1: %08x\n", mdscr_el1);
+      kwrite32(DebugData + offsetof(struct arm_debug_aggregate_state, ds64.mdscr_el1), mdscr_el1);
+    } else {
+      // client doesn't want hardware singlestep, need to clear MDSCR_EL1.SS
+      printf("client doesn't want hardware single-step\n");
+      uint64_t DebugData = thread_get_debug_area(debugee_thread_port);
+      uint32_t mdscr_el1 = kread32(DebugData + offsetof(struct arm_debug_aggregate_state, ds64.mdscr_el1));
+      mdscr_el1 &= ~1;
+      printf("mdscr_el1: %08x\n", mdscr_el1);
+      kwrite32(DebugData + offsetof(struct arm_debug_aggregate_state, ds64.mdscr_el1), mdscr_el1);
+    }
     
     // write that new state back:
     kmemcpy(bp_hitting_state, (uint64_t)&bp_context, sizeof(arm_context_t));
-    
+
+    // update the contents of the debugarea
+    update_hw_breakpoint_debugarea();
+  
     // unblock the looper:
-    kwrite64(looper_saved_state + offsetof(arm_context_t, ss.ss_64.pc), ksym(KSYMBOL_SLEH_SYNC_EPILOG));
+  
+    // if we just unblock the looper here the debug msrs won't be set;
+    // instead, let's point pc at arm_debug_set, x0 at the thread's debug saved area
+    // and lr at the unblocker:
+    kwrite64(looper_saved_state + offsetof(arm_context_t, ss.ss_64.pc), ksym(KSYMBOL_ARM_DEBUG_SET));
+    kwrite64(looper_saved_state + offsetof(arm_context_t, ss.ss_64.x[0]), thread_get_debug_area(debugee_thread_port));
+    kwrite64(looper_saved_state + offsetof(arm_context_t, ss.ss_64.lr), ksym(KSYMBOL_SLEH_SYNC_EPILOG));
     
     // when it runs again it should break out of the loop and continue the syscall
-    // forces us off the core and hopefully it on:
+  
+    // this forces us off the core and hopefully it on:
     thread_switch(target_thread_port, 0, 0);
     swtch_pri(0);
-    
   }
 }
 
 struct monitor_args {
   mach_port_t target_thread_port;
-  uint64_t breakpoint;
   breakpoint_callback callback;
 };
 
@@ -668,48 +777,132 @@ void* monitor_thread(void* arg) {
   printf("monitor thread running, pinning to core\n");
   pin_current_thread();
   printf("monitor thread pinned\n");
-  handle_kernel_bp_hits(args->target_thread_port, ksym(KSYMBOL_EL1_HW_BP_INFINITE_LOOP), args->breakpoint, args->callback);
+  handle_kernel_bp_hits(args->target_thread_port, ksym(KSYMBOL_EL1_HW_BP_INFINITE_LOOP), args->callback);
   return NULL;
 }
 
-// this runs on the thread which will execute the target syscall to debug
-void run_syscall_with_breakpoint(uint64_t bp_address, breakpoint_callback callback, uint32_t syscall_number, uint32_t n_args, ...) {
-  // pin this thread to the target cpu:
+#define MAX_BREAKPOINTS 16
+uint32_t n_set_breakpoints = 0;
+uint64_t breakpoints[MAX_BREAKPOINTS] = {0};
+
+int enable_breakpoint(uint64_t address) {
+  // is it already set?
+  for (int i = 0; i < MAX_BREAKPOINTS; i++) {
+    if (address == breakpoints[i]) {
+      return 1;
+    }
+  }
+  
+  // look for the first empty slot:
+  for (int i = 0; i < MAX_BREAKPOINTS; i++) {
+    if (breakpoints[i] == 0) {
+      breakpoints[i] = address;
+      return 1;
+    }
+  }
+  
+  // no slots left
+  return 0;
+}
+
+int disable_breakpoint(uint64_t address) {
+  for (int i = 0; i < MAX_BREAKPOINTS; i++){
+    if (breakpoints[i] == address) {
+      breakpoints[i] = 0;
+      return 1;
+    }
+  }
+  return 0;
+}
+
+// is there a breakpoint set with this address?
+int breakpoint_is_enabled(uint64_t address) {
+  for (int i = 0; i < MAX_BREAKPOINTS; i++){
+    if (breakpoints[i] == address) {
+      return 1;
+    }
+  }
+  return 0;
+}
+
+void disable_all_breakpoints() {
+  for (int i = 0; i < MAX_BREAKPOINTS; i++) {
+    breakpoints[i] = 0;
+  }
+}
+
+void update_hw_breakpoint_debugarea() {
+  uint64_t DebugData = thread_get_debug_area(debugee_thread_port);
+  printf("DebugData: %llx\n", DebugData);
+  
+  for (int i = 0; i < MAX_BREAKPOINTS; i++) {
+    kwrite64(DebugData + offsetof(struct arm_debug_aggregate_state, ds64.bvr[i]), breakpoints[i]);
+    //printf("bvr read from the DebugData: 0x%llx\n", bvr);
+    
+    if (breakpoints[i] == 0) {
+      // XXX: it's actually a 64-bit field?
+      kwrite32(DebugData + offsetof(struct arm_debug_aggregate_state, ds64.bcr[i]), 0);
+    } else {
+      kwrite32(DebugData + offsetof(struct arm_debug_aggregate_state, ds64.bcr[i]), 0x1e7); //
+    }
+  }
+}
+
+void prepare_current_thread_for_kdbg() {
+  debugee_thread_port = mach_thread_self();
+  
   pin_current_thread();
   
+  set_MDSCR_EL1_KDE(mach_thread_self());
+}
+
+// this runs on the thread which will execute the target syscall to debug
+int already_set_up = 0;
+void run_syscall_under_kdp(uint32_t syscall_number, uint64_t* retval, uint32_t n_args, ...) {
   // set the Kernel Debug Enable bit of MDSCR_EL1:
   set_MDSCR_EL1_KDE(mach_thread_self());
   
   // MDE will be set by the regular API for us
+  if (!already_set_up) {
+    prepare_current_thread_for_kdbg();
+    already_set_up = 1;
+  }
   
-  // enable a hw debug breakpoint at bp_address
-  // it won't fire because PSTATE.D will be set, but we'll deal with that in a bit!
+  // enable initial hardware breakpoints
+  // they won't fire because PSTATE.D will be set, but we'll deal with that in a bit!
   
-  // set a hardware bp on the thread using the proper API so that all the structures are already set up:
+  // set the hardware breakpoints on the thread using the proper API so that all the structures are already set up:
   struct arm64_debug_state state = {0};
-  state.bvr[0] = bp_address;
+  for (int i = 0; i < MAX_BREAKPOINTS; i++) {
+    if (breakpoints[i] == 0) {
+      continue;
+    }
+    state.bvr[i] = breakpoints[i];
 #define BCR_BAS_ALL (0xf << 5)
 #define BCR_E (1 << 0)
-  state.bcr[0] = BCR_BAS_ALL | BCR_E; // enabled
+    state.bcr[i] = BCR_BAS_ALL | BCR_E; // enabled
+  }
   kern_return_t err = thread_set_state(mach_thread_self(),
                                        ARM_DEBUG_STATE64,
                                        (thread_state_t)&state,
                                        sizeof(state)/4);
+#if 0
+    // verify that it got set:
+    memset(&state, 0, sizeof(state));
+    mach_msg_type_number_t count = sizeof(state)/4;
+    err = thread_get_state(mach_thread_self(),
+                           ARM_DEBUG_STATE64,
+                           (thread_state_t)&state,
+                           &count);
   
-  // verify that it got set:
-  memset(&state, 0, sizeof(state));
-  mach_msg_type_number_t count = sizeof(state)/4;
-  err = thread_get_state(mach_thread_self(),
-                         ARM_DEBUG_STATE64,
-                         (thread_state_t)&state,
-                         &count);
+    //if (state.bvr[0] != bp_address) {
+    //  printf("setting the bp address failed\n");
+    //}
+  printf("bcr: %016llx\n", state.bcr[0]);
+#endif
+ 
   
-  if (state.bvr[0] != bp_address) {
-    printf("setting the bp address failed\n");
-  }
-  
-  
-  // now go and find that thread's DebugData where those values are stored.
+  // find that thread's DebugData where those values are stored
   
   uint64_t thread_port_addr = find_port_address(mach_thread_self(), MACH_MSG_TYPE_COPY_SEND);
   uint64_t thread_t_addr = kread64(thread_port_addr + off_ipc_port_ip_kobject);
@@ -720,26 +913,33 @@ void run_syscall_with_breakpoint(uint64_t bp_address, breakpoint_callback callba
   uint64_t DebugData = kread64(thread_t_addr + ACT_DEBUGDATA_OFFSET);
   //printf("DebugData: %llx\n", DebugData);
   
-  uint64_t bvr0 = kread64(DebugData + offsetof(struct arm_debug_aggregate_state, ds64.bvr[0]));
-  printf("bvr0 read from the DebugData: 0x%llx\n", bvr0);
-  
-  uint32_t bcr0 = kread32(DebugData + offsetof(struct arm_debug_aggregate_state, ds64.bcr[0]));
-  printf("bcr0 read from the DebugData: 0x%08x\n", bcr0);
-  
-  // need to manually set this too in the bcr:
-#define ARM_DBG_CR_MODE_CONTROL_ANY (3 << 1)
-  bcr0 |= ARM_DBG_CR_MODE_CONTROL_ANY;
+  for (int i = 0; i < MAX_BREAKPOINTS; i++) {
+    if (breakpoints[i] == 0) {
+      continue;
+    }
+    
+    uint64_t bvr = kread64(DebugData + offsetof(struct arm_debug_aggregate_state, ds64.bvr[i]));
+    printf("bvr read from the DebugData: 0x%llx\n", bvr);
+    
+    uint32_t bcr = kread32(DebugData + offsetof(struct arm_debug_aggregate_state, ds64.bcr[i]));
+    printf("bcr read from the DebugData: 0x%08x\n", bcr);
+    
+    // need to manually set this too in the bcr:
+  #define ARM_DBG_CR_MODE_CONTROL_ANY (3 << 1)
+    bcr |= ARM_DBG_CR_MODE_CONTROL_ANY;
+    
+    kwrite32(DebugData + offsetof(struct arm_debug_aggregate_state, ds64.bcr[i]), bcr);
+    
+    printf("set ARM_DBG_CR_MODE_CONTROL_ANY\n");
+    // returning from the syscall should be enough to set it.
+  }
 
-  kwrite32(DebugData + offsetof(struct arm_debug_aggregate_state, ds64.bcr[0]), bcr0);
-  
-  printf("set ARM_DBG_CR_MODE_CONTROL_ANY\n");
-  // returning from the syscall should be enough to set it.
-  
   struct monitor_args* margs = malloc(sizeof(struct monitor_args));
   margs->target_thread_port = mach_thread_self();
-  margs->breakpoint = bp_address;
-  margs->callback = callback;
- 
+  margs->callback = kdp_handle_stop;
+  
+  syscall_complete = 0;
+  
   // spin up a thread to monitor when the bp is hit:
   pthread_t th;
   pthread_create(&th, NULL, monitor_thread, (void*)margs);
@@ -756,39 +956,17 @@ void run_syscall_with_breakpoint(uint64_t bp_address, breakpoint_callback callba
   
   va_end(ap);
   
-  // now execute a syscall with PSTATE.D disabled:
-  syscall_complete = 0;
+  // now execute the syscall with PSTATE.D disabled:
+
   do_syscall_with_pstate_d_unmasked(&sargs);
   syscall_complete = 1;
   printf("syscall returned\n");
   
   pthread_join(th, NULL);
   printf("monitor exited\n");
-
-}
-
-void sys_write_breakpoint_handler(arm_context_t* state) {
-  // we will have to skip it one instruction ahead because single step won't work...
-  state->ss.ss_64.pc += 4;
   
-  // this means emulating what that instruction did:
-  // LDR             X8, [X8,#0x388]
-  uint64_t val = kread64(state->ss.ss_64.x[8] + 0x388);
-  state->ss.ss_64.x[8] = val;
+  free(margs);
   
-  uint64_t uap = state->ss.ss_64.x[1];
-  char* replacer_string = strdup("a different string!\n");
-  kwrite64(uap+8, (uint64_t)replacer_string);
-  kwrite64(uap+0x10, strlen(replacer_string));
-}
-
-char* hello_wrld_str = "hellowrld!\n";
-void test_kdbg() {
-  run_syscall_with_breakpoint(ksym(KSYMBOL_WRITE_SYSCALL_ENTRYPOINT),  // breakpoint address
-                              sys_write_breakpoint_handler,            // breakpoint hit handler
-                              4,                                       // SYS_write
-                              3,                                       // 3 arguments
-                              1,                                       // stdout
-                              (uint64_t)hello_wrld_str,                // "hellowrld!\n"
-                              strlen(hello_wrld_str));                 // 11
+  retval[0] = sargs.retval[0];
+  retval[1] = sargs.retval[1];
 }

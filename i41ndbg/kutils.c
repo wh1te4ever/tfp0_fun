@@ -2,6 +2,7 @@
 #include "krw.h"
 #include "offsets.h"
 #include "find_port.h"
+#include "arm64_state.h"
 
 #include <stdint.h>
 #include <unistd.h>
@@ -48,3 +49,12 @@ uint64_t current_thread() {
     uint64_t thread_port = find_port_address(mach_thread_self(), MACH_MSG_TYPE_COPY_SEND);
     return kread64(thread_port + off_ipc_port_ip_kobject);
 }
+
+uint64_t thread_get_debug_area(mach_port_t thread_port) {
+    uint64_t thread_port_addr = find_port_address(thread_port, MACH_MSG_TYPE_COPY_SEND);
+    uint64_t thread_t_addr = kread64(thread_port_addr + off_ipc_port_ip_kobject);
+  
+    uint64_t DebugData = kread64(thread_t_addr + ACT_DEBUGDATA_OFFSET);
+  
+    return DebugData;
+  }

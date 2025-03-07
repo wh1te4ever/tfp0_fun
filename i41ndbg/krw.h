@@ -37,6 +37,10 @@ uint64_t kalloc(size_t sz);
 
 void kfree(uint64_t kaddr, size_t sz);
 
+void rkbuffer(uint64_t kaddr, void* buffer, uint32_t length);
+
+void rkstring(uint64_t kaddr, void* buffer, uint32_t length);
+
 void kmemcpy(uint64_t dest, uint64_t src, uint32_t length);
 
 void khexdump(uint64_t addr, size_t size);

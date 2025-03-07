@@ -4,6 +4,7 @@
 #include <errno.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <unistd.h>
 
 extern task_t tfp0;
 uint64_t kbase = 0;
@@ -112,6 +113,39 @@ void kfree(uint64_t kaddr, size_t sz) {
     printf("kfree failed\n");
     exit(1);
 }
+
+void rkbuffer(uint64_t kaddr, void* buffer, uint32_t length) {
+    kern_return_t err;
+    uint32_t val = 0;
+    mach_vm_size_t outsize = 0;
+    err = mach_vm_read_overwrite(tfp0,
+                                 (mach_vm_address_t)kaddr,
+                                 (mach_vm_size_t)length,
+                                 (mach_vm_address_t)buffer,
+                                 &outsize);
+    if (err != KERN_SUCCESS){
+      printf("tfp0 read failed %s addr: 0x%llx err:%x port:%x\n", mach_error_string(err), kaddr, err, tfp0);
+      sleep(3);
+      return;
+    }
+    
+    if (outsize != length){
+      printf("tfp0 read was short (expected %lx, got %llx\n", sizeof(uint32_t), outsize);
+      sleep(3);
+      return;
+    }
+  }
+
+// copy a NULL terminated string from the kernel to the userspace buffer, up to a max of length bytes
+void rkstring(uint64_t kaddr, void* buffer, uint32_t length) {
+    uint8_t ch;
+    size_t offset = 0;
+    uint8_t* output_string = buffer;
+    do {
+      ch = kread32(kaddr + offset) & 0xff;
+      output_string[offset++] = ch;
+    } while (ch && offset < length);
+  }
 
 const uint64_t kernel_address_space_base = 0xffff000000000000;
 void kmemcpy(uint64_t dest, uint64_t src, uint32_t length) {

@@ -1,6 +1,8 @@
 #ifndef arm64_state_h
 #define arm64_state_h
 
+#include <mach/machine/thread_status.h>
+
 /*
  * GPR context
  */
@@ -42,6 +44,8 @@ typedef struct arm_saved_state64 arm_saved_state64_t;
 
 #define ARM_SAVED_STATE64_COUNT ((mach_msg_type_number_t) \
 (sizeof (arm_saved_state64_t)/sizeof(unsigned int)))
+
+//typedef uint32_t arm_state_hdr_t;
 
 struct arm_saved_state {
   arm_state_hdr_t ash;
@@ -110,7 +114,8 @@ typedef struct arm_context arm_context_t;
 #define ARM_SAVED_STATE64 0x15
 
 #define ARM_DEBUG_STATE64 15
-const uint64_t ACT_DEBUGDATA_OFFSET = 0x438;
+// this should be in symbols.h ???
+#define ACT_DEBUGDATA_OFFSET 0x438
 
 struct arm64_debug_state
 {

@@ -1,0 +1,193 @@
+KDP kernel debugger for iOS 11.1.2 by @i41nbeer
+
+!!! DO NOT USE THIS ON A PERSONAL DEVICE !!!
+
+Only use this on a dedicated testing device.
+
+If you want more technical details about how this works please see the slides from my MOSEC 2018
+talk: https://bugs.chromium.org/p/project-zero/issues/detail?id=1417#c16
+
+The source should hopefully be reasonably well commented too :)
+
+== prerequisites ==
+out-of-the box this will only work on iPhone 7, iPhone 6s and iPod Touch 6g running
+build 15B202 (11.1.2) You can make it work on all other devices on iOS 11 - 11.1.2
+but will need to manually find the relativly large number of symbols which are required.
+
+See symbols.c for hints on how to do this.
+
+You will also need an uncompressed kernelcache binary. You can use the ipsw.me site
+to find links to the correct ipsw package for your device. Unzip the ipsw then use
+the joker tool from http://www.newosxbook.com/tools/joker.html to extract an uncompressed
+kernelcache image.
+
+You'll need to use lldb to connect to the debugger. The version which ships with the latest
+Xcode on MacOS works fine. You can probably get this all to work on linux if you build lldb,
+but I haven't tested that.
+
+== debugger limitations ==
+There are some severe limitations on what this debugger can do, but I have still found it
+useful for VR and exploitation.
+
+You can only debug the kernel when it's executing after your userspace thread has context-switched
+in to EL1. Essentially this means you can only debug syscalls which *you* make. You cannot for example
+set a breakpoint on kalloc and expect it to be hit every time the kalloc code is executed.
+It will only be hit when a syscall you made caused kalloc to be hit.
+
+Furthermore, the "debuggable" syscalls have to be made via a wrapper function.
+
+== syscall wrapping ==
+Only syscalls made by this syscall wrapper function will be visible to the debugger:
+
+  void run_syscall_under_kdp(uint32_t syscall_number, uint64_t* retval, uint32_t n_args, ...);
+
+syscall number is the number of the syscall to make (when I say syscall here I mean all SVC initiated
+exceptions to EL1, so this includes platform syscalls, mach traps and unix syscalls.)
+
+retval should be a pointer to an array of two uint64_t's to receive the return value of the syscall.
+See the comments in do_syscall_with_pstate_d_unmasked for a more detailed discussion of syscall return
+values and how to use the retval values to correctly wrap syscalls.
+
+n_args is the number of arguments the syscall takes, then each argument should be passed.
+
+I have included an example of how to wrap all the iokit MIG functions to make them debuggable. This lets
+you debug IOKit external methods for example. See the wrapped version of mach_msg_trap in kdbg_syscall_wrappers.c
+and the patched MIG-generated source from iokit's device.defs in iokitUser.c.
+
+(Note that IOKitLib implements a higher-level wrapper on top of this, you'll have to patch that too if you want to use
+IOKitLib's higher-level functions like IOConnectCallMethod rather than the actual MIG io_connect_method function.)
+
+== building ==
+If you put your target code in kernel_debug_me.c inside kernel_debug_me() the KDP server will already be set up, just
+put your wrapped syscall invocations in there and KDP should see them.
+
+This version of the async_wake exploit persists its kernel memory read/write port over app restarts (in a very hacky way,
+see persist_tfp0.h.) The first time you run this app it will get kernel memory r/w. Quit it and run it again to start
+the KDP server with the persisted kernel memory r/w port.
+
+== connecting: setup ==
+KDP is a udp-based protocol. kdp_server.c implements a subset of the server side of the KDP protocol.
+
+If SERVER_MODE_TCP is defined (which it is by default) it will actually talk tcp, wrapping each udp packet in a simple <length, value>
+protocol. This means you can use it over a tcp relay via a lightning cable rather than having to talk over
+a real network interface.
+
+I have included usbmux.py and tcprelay.py from Hector Martin "marcan". If you're running on MacOS those are enough
+to set up tcp port forwarding. If you're running linux search for a guide on how to get tcp port forwarding working.
+
+On a mac connect your target iDevice via lightning cable then in a terminal on the host run:
+$ python usbmux.py
+
+In another host terminal run:
+$ python ./tcprelay.py -t 41139:41414
+
+that sets up a port forward from 41139 on the iDevice on 41414 on the host.
+
+Then build and run async_wake_ios and run it twice; first to run the exploit to get kernel memory r/w then quit it and run again to
+start the KDP server.
+
+Then in another host terminal run:
+$ python kdpproxy.py localhost
+
+that will start a simple python script which listens for kdp udp packets on localhost 41139, wraps them in TCP packets and sends them to
+localhost 41414. It also receives and unwraps packets going the other way.
+
+(You can avoid all this proxying by undefining SERVER_MODE_TCP, but then you'll have to have your iDevice and debugging client on the same
+network where they can send udp packets to each other.)
+
+== connecting: lldb ==
+You need the uncompressed kernelcache image for your target device. Running file on that should say "Mach-O 64-bit executable arm64", not "data".
+
+In a host terminal window run:
+$ lldb <your.uncompressed.kernelcache>
+
+That should drop you to an lldb prompt, run this there:
+(lldb) kdp-remote localhost
+
+[if you're not using the tcp wrapper, replace localhost with the iDevice's ip address]
+
+If all the networking is set up correctly you should see something like this:
+
+Version: Darwin Kernel Version 17.2.0: Fri Sep 29 18:14:50 PDT 2017; root:xnu-4570.20.62~4/RELEASE_ARM64_T8010; UUID=5E450F40-E224-33F7-946B-A764D21DF3FC; stext=0xfffffff00b004000
+Kernel UUID: 5E450F40-E224-33F7-946B-A764D21DF3FC
+Load Address: 0xfffffff00b004000
+Kernel slid 0x4000000 in memory.
+Loaded kernel file /REDACTED/kernelcache.ip7_11_1_2.uncomp
+Loading 165 kext modules warning: Can't find binary/dSYM for com.apple.kec.corecrypto (B3028F6D-3547-37E1-B166-DB8972637087)
+.warning: Can't find binary/dSYM for com.apple.kec.Libm (51AFA03E-8041-3D11-BD40-A6D1AED1C667)
+
+followed by a long list of all the kexts for which you don't have symbols before you get dropped back at an lldb prompt:
+
+. done.
+Process 1 stopped
+* thread #1, stop reason = signal SIGSTOP
+frame #0: 0xfffffff00b0cc474 kernelcache.ip7_11_1_2.uncomp`___lldb_unnamed_symbol49$$kernelcache.ip7_11_1_2.uncomp
+kernelcache.ip7_11_1_2.uncomp`___lldb_unnamed_symbol49$$kernelcache.ip7_11_1_2.uncomp:
+->  0xfffffff00b0cc474 <+0>: msr    DAIFSet, #0x3
+0xfffffff00b0cc478 <+4>: mrs    x3, TPIDR_EL1
+0xfffffff00b0cc47c <+8>: mov    sp, x21
+Target 0: (kernelcache.ip7_11_1_2.uncomp) stopped.
+(lldb)
+
+Note that the kernel isn't actually stopped here; this is an emulated stop state because of how the lldb client and server expect stuff to work.
+You can't single step from here, but you can set breakpoints. Once those breakpoints are hit single-stepping works fine.
+
+== using lldb ==
+There are a few idosyncracies to be aware of when using lldb in this setup:
+
+== using lldb: stepping and continuing ==
+If you just use the lldb 'c' and 's' continue and step-instruction instructions you will lose control via KDP.
+Instead when you first connect you need to create the following two aliases:
+
+(lldb) command alias kc process plugin packet send -c 27
+(lldb) command alias ks process plugin packet send -c 28
+
+then to continue execution when stopped do this:
+(lldb) kc
+(lldb) c
+
+and to single-step do this:
+(lldb) ks
+(lldb) s
+
+The reason for this is that the lldb client code tries to resume execution by indicating that the client should do a hardware single-step
+but this doesn't make it to the ARM64 register layer so it's impossible to distinguish whether the client
+wanted to really remove a breakpoint or is just temporarily removing a breakpoint to single-step over it. (I don't think Apple use this code.)
+
+The kc and ks commands tell the KDP server that we plan to continue or single-step, so it should ignore the next breakpoint_remove command it receives.
+
+== using lldb: setting breakpoints ==
+This works as expected, either via address or symbol if lldb knows about the symbol.
+
+(lldb) break set --address 0xfffffff00a8c8484
+
+Remember to rebase any kernelcache addresses using the current slide value (lldb tells you this when you connect.)
+
+You are limited to 16 hardware breakpoints. The KDP server will also internally use some breakpoints to implement the continue and single-step
+features, so don't use all of them. If you do things will probably break in weird ways.
+
+When breakpoints are hit you can do the usual things like viewing registers and memory.
+
+== using lldb: single-stepping ==
+This should work well using the hardware single-step feature. Remember that you need to do 'ks' and then 's', not just 's'.
+
+== using lldb: finish ==
+This should work and step you out of the current function.
+
+== using lldb: next ==
+This doesn't work yet, sorry. It could be made to work with some effort, but for now you'll have to manually set the correct breakpoints.
+
+== using lldb: detach ==
+This doesn't really work.
+
+== using lldb: watchpoints ==
+If you are very very keen you could make these work; but for now they won't.
+
+== newer iOS versions ==
+At some point after iOS 11.1.2 Apple tried to mitigate the techniques this debugger uses. Specifically the gadget which I use to set MDSCR_EL1
+has changed such that it attempts to verify that the value it set didn't set the KDE bit. This mitigation can probably be defeated
+but for the next iteration of this project I would probably use a different technique for making everything work.
+
+== bugs ==
+I am sure this thing is very buggy; I can't believe it works at all. It does mostly work though ;)
+

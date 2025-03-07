@@ -47,6 +47,10 @@ uint64_t ksymbols_iphone_6s_15b202[] = {
     0xFFFFFFF0071941D8, // KSYMBOL_EL1_HW_BP_INFINITE_LOOP  // look for xrefs to "ESR (0x%x) for instruction trapped" and find switch case 49
     0xFFFFFFF007194BBC, // KSYMBOL_SLEH_SYNC_EPILOG         // look for xrefs to "Unsupported Class %u event code."
     0xFFFFFFF00760A0A0, // KSYMBOL_KERNPROC
+    0xFFFFFFF00719473C, // KSYMBOL_EL1_SW_STEP_INFINITE_LOOP
+    0xFFFFFFF007197780, // KSYMBOL_ARM_DEBUG_SET
+    0xFFFFFFF00701DA0C, // KSYMBOL_VERSION_STRING
+    0xFFFFFFF0075A08C8, // KSYMBOL_KERNEL_UUID_STRING
 };
 
 uint64_t ksym(enum ksymbol sym)

@@ -14,6 +14,8 @@
 #include "kutils.h"
 #include "kcall.h"
 #include "kexecute.h"
+#include "kdp_server.h"
+#include "kernel_debug_me.h"
 
 task_t tfp0 = MACH_PORT_NULL;
 extern uint64_t kbase;
@@ -68,7 +70,11 @@ int main(int argc, char *argv[], char *envp[]) {
 		// kfree(kptr, 0x100);
 		// khexdump(kptr, 0x100);
 
-		test_kdbg();
+		printf("starting kdp server\n");
+    	start_kdp_server();
+
+		// run the iokit PoC to test under kdp:
+		kernel_debug_me();
 
 		mach_port_deallocate(mach_task_self(), tfp0);
 	}
