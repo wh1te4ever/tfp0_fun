@@ -104,7 +104,7 @@ uint32_t iosurface_s_create_surface_fast_path(void)
 
 uint32_t iosurface_s_get_ycbcrmatrix(void)
 {
-    uint64_t i_scalar[1] = { 1 }; // fixed, first valid client obj
+    uint64_t i_scalar[1] = { 1 }; // fixed, first valid client obj   //will set IOSurfaceRootUserClient::get_ycbcrmatrix's a2
     uint64_t o_scalar[1];
     uint32_t i_count = 1;
     uint32_t o_count = 1;

