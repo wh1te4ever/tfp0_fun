@@ -81,6 +81,7 @@ uint32_t off_p_task = 0;
 uint32_t off_fg_data = 0;
 uint32_t off_fp_fglob = 0;
 uint32_t off_pb_buffer = 0;
+uint32_t off_pb_cnt = 0;
 uint32_t off_task_map = 0;
 uint32_t off_vm_map_pmap = 0;
 uint32_t off_pmap_ttep = 0;
@@ -115,6 +116,7 @@ void offsets_init(void) {
         // (lldb) p/x offsetof(struct pipebuf, buffer)
         // (unsigned long) 0x0000000000000010
         off_pb_buffer = 0x10;
+        off_pb_cnt = 0x0;
 
         //https://github.com/apple-oss-distributions/xnu/blob/xnu-7195.81.3/osfmk/kern/task.h
         off_task_map = 0x28;

@@ -117,7 +117,7 @@ uint32_t iosurface_s_get_ycbcrmatrix(void)
             o_scalar, &o_count,
             NULL, NULL);
     if (kr != KERN_SUCCESS) {
-        printf("s_get_ycbcrmatrix error: 0x%x", kr);
+        printf("s_get_ycbcrmatrix error: 0x%x\n", kr);
         return 0;
     }
     return (uint32_t)o_scalar[0];
@@ -146,7 +146,7 @@ void iosurface_s_set_indexed_timestamp(uint64_t v)
             NULL, NULL,
             NULL, NULL);
     if (kr != KERN_SUCCESS) {
-        printf("s_set_indexed_timestamp error: 0x%x", kr);
+        printf("s_set_indexed_timestamp error: 0x%x\n", kr);
     }
 }
 

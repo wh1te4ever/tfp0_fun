@@ -43,6 +43,7 @@ extern uint32_t off_p_task;
 extern uint32_t off_fg_data;
 extern uint32_t off_fp_fglob;
 extern uint32_t off_pb_buffer;
+extern uint32_t off_pb_cnt;
 extern uint32_t off_task_map;
 extern uint32_t off_vm_map_pmap;
 extern uint32_t off_pmap_ttep;
