@@ -325,7 +325,7 @@ expand_pipespace(struct pipe *p, int target_size)
 #endif 
     // if ever had called pipe_read from read_pipe, then cnt will be decreased, so no need to expand allocation
     // rpipe->pipe_buffer.cnt -= size; ( bsd/kern/sys_pipe.c:796 from pipe_read )
-    // read_pipe();
+    read_pipe();
 
     printf("Going to end of call iosurface_s_get_ycbcrmatrix, set breakpoint first and press any key.\n");  ch = getchar();
     uint32_t rpipe_cnt = kread32(rpipe + off_pb_cnt);
