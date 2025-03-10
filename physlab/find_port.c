@@ -2,7 +2,6 @@
 #include "kutils.h"
 #include "offsets.h"
 #include "krw.h"
-#include <stdio.h>
 
 uint64_t find_port(mach_port_name_t port) {
     uint64_t task_addr = task_self_addr();

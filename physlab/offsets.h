@@ -1,0 +1,59 @@
+#include <stdint.h>
+
+enum kgadget {
+    KGADGET_POPULATE,
+    KGADGET_PROLOGUE,
+    KGADGET_MOV_X15_X2__BR_X3,
+    KGADGET_MOV_X10_X0__BR_X2,
+    KGADGET_MOV_X12_X0__BR_x2,
+    KGADGET_MOV_X16_X15__BR_X12,
+    KGADGET_MOV_X7_X16__BR_X10,
+    KGADGET_MOV_X10_X0__BR_X12,
+    KGADGET_MOV_X13_X2__BR_X12,
+    KGADGET_MOV_X4_X13__BR_X15,
+    KGADGET_ADD_X0_X0_0X40__RET
+};
+
+enum ksymbol {
+  KSYMBOL_KERNPROC,
+  KSYMBOL_RET_300,
+  KSYMBOL_KALLOC_EXTERNAL,
+  KSYMBOL_KFREE,
+  KSYMBOL_PANIC,
+  KSYMBOL_gPhysBase,
+  KSYMBOL_gPhysSize,
+  KSYMBOL_gVirtBase,
+  KSYMBOL_ptov_table,
+  KSYMBOL_phystokv,
+  KSYMBOL_kvtophys,
+  KSYMBOL_cpu_ttep,
+  KSYMBOL_pmap_enter_options_addr,
+  KSYMBOL_pmap_remove_options,
+  KSYMBOL_vm_first_phys,
+  KSYMBOL_pv_head_table,
+  KSYMBOL_ml_phys_read_data,
+  KSYMBOL_ml_phys_write_data
+};
+
+extern uint32_t off_ipc_port_ip_kobject;
+extern uint32_t off_task_itk_space;
+extern uint32_t off_ipc_space_is_table;
+extern uint32_t off_p_pid;
+extern uint32_t off_p_pfd;
+extern uint32_t off_p_list_le_prev;
+extern uint32_t off_p_task;
+extern uint32_t off_p_flag;
+extern uint32_t off_p_name;
+extern uint32_t off_fg_data;
+extern uint32_t off_fp_fglob;
+extern uint32_t off_pb_buffer;
+extern uint32_t off_task_map;
+extern uint32_t off_vm_map_pmap;
+extern uint32_t off_pmap_ttep;
+extern uint32_t off_pmap_type;
+extern uint32_t off_pt_desc_pmap;
+extern uint32_t off_pt_desc_ptd_info;
+
+uint64_t kgad(enum kgadget sym);
+uint64_t ksym(enum ksymbol sym);
+void offsets_init(void);

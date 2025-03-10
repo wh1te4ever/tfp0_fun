@@ -2,6 +2,8 @@
     "files.associations": {
         "offsets.h": "c",
         "kprimitive.h": "c",
-        "*.m": "c"
+        "*.m": "c",
+        "translation.h": "c",
+        "physrw.h": "c"
     }
 }

@@ -46,6 +46,7 @@ void build_stable_kmem_api()
 {
     uint64_t p_fd = kread64(proc_of_pid(getpid()) + off_p_pfd); 
     uint64_t fd_ofiles = kread64(p_fd); 
+    printf("pipefds[0] = %d\n", pipefds[0]);
     uint64_t rpipe_fp = kread64(fd_ofiles + pipefds[0] * 8);
     uint64_t r_fp_glob = kread64(rpipe_fp + off_fp_fglob);
     rpipe = kread64(r_fp_glob + off_fg_data); 

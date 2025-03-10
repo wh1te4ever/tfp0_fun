@@ -48,15 +48,9 @@ create_pipes(void) {
 size_t
 pipe_spray(const int *pipefds, size_t pipe_count,
         void *pipe_buffer, size_t pipe_buffer_size) {
-    // assert(pipe_count <= 0xffffff);
-    // assert(pipe_buffer_size > 512);
     size_t write_size = pipe_buffer_size - 1;
     size_t pipes_filled = 0;
     for (size_t i = 0; i < pipe_count; i++) {
-        // Update the buffer.
-        // if (update != NULL) {
-        //     update((uint32_t)i, pipe_buffer, pipe_buffer_size);
-        // }
         // Fill the write-end of the pipe with the buffer. Leave off the last byte.
         int wfd = pipefds[i + 1];
         ssize_t written = write(wfd, pipe_buffer, write_size);
