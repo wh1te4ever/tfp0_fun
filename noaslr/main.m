@@ -1,15 +1,11 @@
 #include <stdio.h>
+#include <stdio.h>
 #include <dlfcn.h>
-#include "main.h"
+#include <unistd.h>
 #include "krw.h"
-#include "offsets.h"
-#include "kalloc_pipe.h"
-#include "kexecute.h"
-#include "kcall8.h"
-#include "physrw.h"
-#include "kfunc.h"
-#include "translation.h"
+#include "main.h"
 #include "kutils.h"
+#include "offsets.h"
 
 task_t tfp0 = MACH_PORT_NULL;
 void *libkernrw = NULL;
@@ -37,17 +33,6 @@ init_kernrw(void) {
 		mach_port_deallocate(mach_task_self(), tfp0);
 	}
 
-	libkernrw = dlopen("/usr/lib/libkernrw.0.dylib", RTLD_NOW);
-	if(libkernrw != NULL) {
-		void *requestKernRw_ptr = dlsym(libkernrw, "requestKernRw");
-		if(requestKernRw_ptr != NULL) {
-			int (*requestKernRw)(void) = NULL;
-    		requestKernRw = (int (*)(void))requestKernRw_ptr;
-			if(requestKernRw() == 0)
-    			return KERN_SUCCESS;
-		}
-	}
-
 	return KERN_FAILURE;
 }
 
@@ -71,40 +56,18 @@ int disableASLR(bool disable) {
     return 0;
 }
 
+
 int main(int argc, char *argv[], char *envp[]) {
-
+	
 	offsets_init();
-	translation_init();
-
-	puts("_   /|");
-	puts("'o.O'");
-	puts("=(___)=");
-	puts("   U     ack MobileTimer!");
 
 	if(init_kernrw() == KERN_SUCCESS) {
 		int r = get_kbase(&kbase);
-    	printf("[*] get_kbase ret: %d, kbase: 0x%llx, kslide: 0x%llx\n", r, kbase, kslide);
-
-		//kexecute, kcall8 test
-		init_kexecute();
-
-		uint64_t kret = kexecute(ksym(KSYMBOL_RET_300), 1, 0, 0, 0, 0, 0, 0);
-		// printf("kexecute KSYMBOL_RET_300 kret = %llu\n", kret);
-
-		disableASLR(true);
-		printf("[!] Run MobileTimer and start stopwatch to see demo!\n[!] If you done, press any key to conitnue."); while (getchar() == EOF);
-
-		//kernel mapping with phys r/w
-		// physrw_handoff(getpid());
-		physrw_lab();
-
-		
-
-		term_kexecute();
-
-		puts("[*] Done!");
-		// while(1) {};
+    	printf("get_kbase ret: %d, kbase: 0x%llx, kslide: 0x%llx\n", r, kbase, kslide);
 	}
+	// khexdump(kbase, 0x100);
+
+	disableASLR(true);
 
 	return 0;
 }

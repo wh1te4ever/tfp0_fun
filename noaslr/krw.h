@@ -1,5 +1,18 @@
 #include <stdint.h>
 #include <mach/mach.h>
+#include <CoreFoundation/CoreFoundation.h>
+
+#define PROC_PIDREGIONINFO (7)
+#define VM_KERN_MEMORY_OSKEXT (5)
+#define LOADED_KEXT_SUMMARY_HDR_NAME_OFF (0x10)
+#define LOADED_KEXT_SUMMARY_HDR_ADDR_OFF (0x60)
+#define kOSBundleLoadAddressKey "OSBundleLoadAddress"
+
+int
+proc_pidinfo(int, int, uint64_t, void *, int);
+
+CFDictionaryRef
+OSKextCopyLoadedKextInfo(CFArrayRef, CFArrayRef);
 
 kern_return_t
 mach_vm_read_overwrite(vm_map_t, mach_vm_address_t, mach_vm_size_t, mach_vm_address_t, mach_vm_size_t *);
@@ -40,3 +53,5 @@ void kwrite64(uint64_t where, uint64_t what);
 void kmemcpy(uint64_t dest, uint64_t src, uint32_t length);
 
 void khexdump(uint64_t addr, size_t size);
+
+uint64_t get_kbase_via_kext(void);

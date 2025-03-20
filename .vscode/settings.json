@@ -4,6 +4,7 @@
         "kprimitive.h": "c",
         "*.m": "c",
         "translation.h": "c",
-        "physrw.h": "c"
+        "physrw.h": "c",
+        "stdio.h": "c"
     }
 }
