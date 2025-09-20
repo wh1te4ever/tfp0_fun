@@ -1,0 +1,57 @@
+#include <stdint.h>
+#include <mach/mach.h>
+#include <CoreFoundation/CoreFoundation.h>
+
+#define PROC_PIDREGIONINFO (7)
+#define VM_KERN_MEMORY_OSKEXT (5)
+#define LOADED_KEXT_SUMMARY_HDR_NAME_OFF (0x10)
+#define LOADED_KEXT_SUMMARY_HDR_ADDR_OFF (0x60)
+#define kOSBundleLoadAddressKey "OSBundleLoadAddress"
+
+int
+proc_pidinfo(int, int, uint64_t, void *, int);
+
+CFDictionaryRef
+OSKextCopyLoadedKextInfo(CFArrayRef, CFArrayRef);
+
+kern_return_t
+mach_vm_read_overwrite(vm_map_t, mach_vm_address_t, mach_vm_size_t, mach_vm_address_t, mach_vm_size_t *);
+
+kern_return_t
+mach_vm_write(vm_map_t, mach_vm_address_t, vm_offset_t, mach_msg_type_number_t);
+
+kern_return_t
+mach_vm_machine_attribute(vm_map_t, mach_vm_address_t, mach_vm_size_t, vm_machine_attribute_t, vm_machine_attribute_val_t *);
+
+kern_return_t mach_vm_allocate(task_t task, mach_vm_address_t *addr, mach_vm_size_t size, int flags);
+
+kern_return_t mach_vm_deallocate(task_t task, mach_vm_address_t addr, mach_vm_size_t size);
+
+
+int get_kbase(uint64_t *addr);
+uint64_t kbase;
+uint64_t kslide;
+
+kern_return_t
+kreadbuf(uint64_t kaddr, void *buf, size_t sz);
+
+kern_return_t
+kwritebuf(uint64_t kaddr, const void *buf, size_t sz);
+
+uint16_t kread16(uint64_t where);
+
+uint32_t kread32(uint64_t where);
+
+uint64_t kread64(uint64_t where);
+
+void kwrite16(uint64_t where, uint16_t what);
+
+void kwrite32(uint64_t where, uint32_t what);
+
+void kwrite64(uint64_t where, uint64_t what);
+
+void kmemcpy(uint64_t dest, uint64_t src, uint32_t length);
+
+void khexdump(uint64_t addr, size_t size);
+
+uint64_t get_kbase_via_kext(void);
