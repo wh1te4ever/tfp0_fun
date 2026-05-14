@@ -2,7 +2,7 @@ GO_EASY_ON_ME = 1
 DEBUG = 0
 FINALPACKAGE = 1
 
-THEOS_DEVICE_IP = 10.201.13.199 -p 2222
+THEOS_DEVICE_IP = idevice
 
 TARGET := iphone:clang:latest:7.0
 ARCHS = arm64
