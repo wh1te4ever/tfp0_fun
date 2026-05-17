@@ -1,12 +1,13 @@
 #include <stdint.h>
 
 #define T8010_19A346_KVERSION "Darwin Kernel Version 21.0.0: Sun Aug 15 20:55:57 PDT 2021; root:xnu-8019.12.5~1/RELEASE_ARM64_T8010"
-#define VM_KERNEL_LINK_ADDR 0xFFFFFE0007004000ULL
-
+#define T8010_17H35_KVERSION "Darwin Kernel Version 19.6.0: Sat Jul 11 00:58:54 PDT 2020; root:xnu-6153.142.1~8/RELEASE_ARM64_T8010"
+#define S8000_18A373_KVERSION "Darwin Kernel Version 20.0.0: Fri Aug 28 23:05:58 PDT 2020; root:xnu-7195.0.46~9/RELEASE_ARM64_S8000"
 
 enum kgadget {
   KGADGET_POPULATE,
   KGADGET_PROLOGUE,
+  KGADGET_ADD_X0_X0_0X40__RET,
   KGADGET_MOV_X5_X6__BR_X15,
   KGADGET_MOV_X6_X9__BR_X11,
   KGADGET_MOV_X7_X14__BR_X15,
@@ -16,7 +17,22 @@ enum kgadget {
   KGADGET_MOV_X14_X3__BR_X4,
   KGADGET_MOV_X11_X4__BR_X2,
   KGADGET_MOV_X10_X1__BR_X3,
-  KGADGET_ADD_X0_X0_0X40__RET,
+  KGADGET_MOV_X10_X1__BR_X2,
+  KGADGET_MOV_X20_X3__BR_X2,
+  KGADGET_MOV_X13_X1__BR_X2,     
+  KGADGET_MOV_X11_X13__BR_X10,   
+  KGADGET_MOV_X7_X1__BR_X8,
+  KGADGET_MOV_X0_X3__BR_X4,
+  KGADGET_MOV_X5_X8__BR_X10,
+  KGADGET_MOV_X0_X20__BR_X11,   
+  KGADGET_MOV_X12_X0__BR_X2,
+  KGADGET_MOV_X0_X1__BR_X2,
+  KGADGET_MOV_X20_X15__BR_X12,
+  KGADGET_MOV_X11_X1__BR_X12,
+  KGADGET_MOV_X16_X1__BR_X2,
+  KGADGET_MOV_X10_X12__BR_X8,
+  KGADGET_MOV_X7_X16__BR_X10,
+  KGADGET_MOV_X10_X0__BR_X2,
 };
 
 enum ksymbol {
@@ -44,6 +60,7 @@ enum ksymbol {
   KSYMBOL_gVirtBase,
   KSYMBOL_cpu_ttep,
   KSYMBOL_pmap_find_pa,
+  KSYMBOL_pmap_find_phys,
 };
 
 extern uint32_t off_p_pid;
@@ -66,6 +83,9 @@ extern uint32_t off_mach_msg_header_t_msgh_remote_port;
 extern uint32_t off_task_map; 
 extern uint32_t off_vm_map_pmap;
 extern uint32_t off_pmap_ttep;
+extern uint32_t off_pmap_min;
+extern uint32_t off_pmap_max;
+extern uint32_t off_socket_so_pcb;
 
 uint64_t kgad(enum kgadget sym);
 uint64_t ksym(enum ksymbol sym);

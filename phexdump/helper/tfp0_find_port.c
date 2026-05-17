@@ -47,6 +47,6 @@ uint64_t find_kmsgdata_from_port(mach_port_name_t port) {
 uint64_t port_to_kobject(mach_port_t port)
 {
     uint64_t ipc_port = tfp0_find_port(port);
-    uint64_t kobject = tfp0_kread64(ipc_port + 0x58);    // 0x58 = p/x offsetof(ipc_port, kdata.kobject)
+    uint64_t kobject = tfp0_kread64(ipc_port + off_ipc_port_ip_kobject);    // p/x offsetof(ipc_port, kdata.kobject)
     return kobject;
 } 

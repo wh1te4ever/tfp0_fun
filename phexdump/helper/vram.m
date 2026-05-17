@@ -7,7 +7,7 @@
 bool get_vram_info(uint64_t *outPA, uint64_t *outSize)
 {
     io_registry_entry_t entry = IORegistryEntryFromPath(
-        kIOMainPortDefault, "IODeviceTree:/vram");
+        kIOMasterPortDefault, "IODeviceTree:/vram");
     if (entry == MACH_PORT_NULL) return false;
 
     CFDataRef reg = (CFDataRef)IORegistryEntryCreateCFProperty(
