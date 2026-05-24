@@ -81,8 +81,11 @@ int get_kbase(uint64_t *addr)
     return 0;
 }
 
+#define KERNEL_ADDRESS_MIN 0xffff000000000000ULL
+
 kern_return_t
 kreadbuf(uint64_t kaddr, void *buf, size_t sz) {
+    if (kaddr < KERNEL_ADDRESS_MIN) return KERN_INVALID_ADDRESS;
     mach_vm_address_t p = (mach_vm_address_t)buf;
     mach_vm_size_t read_sz, out_sz = 0;
 
@@ -100,6 +103,7 @@ kreadbuf(uint64_t kaddr, void *buf, size_t sz) {
 
 kern_return_t
 kwritebuf(uint64_t kaddr, const void *buf, size_t sz) {
+    if (kaddr < KERNEL_ADDRESS_MIN) return KERN_INVALID_ADDRESS;
     vm_machine_attribute_val_t mattr_val = MATTR_VAL_CACHE_FLUSH;
     mach_vm_address_t p = (mach_vm_address_t)buf;
     mach_msg_type_number_t write_sz;
